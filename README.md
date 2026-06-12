@@ -11,10 +11,13 @@ A sleek, premium local web application designed to show per-file diffs and detai
 - **Real-Time Workspace Watcher**: When comparing against the Live State, the app watches your files (respecting `.gitignore` exclusions) and automatically reloads the diff list and editor views when modifications are saved, while suppressing startup notification toasts on load.
 - **Dual Diff Formats**: Toggle between a **Unified** (single-column inline) diff and a premium **Split** (side-by-side) diff.
 - **Git Blame Mode**: Hides diff annotations to show a line-by-line file blame. Groups consecutive lines written in the same commit to span a single metadata block. Commits are mapped to a hand-curated palette of 16 highly distinct, premium HSL colors for clear visual separation, with full commit details available on hover.
-- **Repository Tree Sidebar**: Shows the full directory structure of your project by default. Unchanged files are visible but clean; modified files highlight in status colors; untracked files are marked in green; and ignored files are deemphasized (reduced opacity/italicized).
+- **Repository Tree Sidebar**: Shows the full directory structure of your project by default. Features a compact, dense design for high scalability. Unchanged files are visible but clean; modified files highlight in status colors; untracked files are marked in green; and ignored files are deemphasized (reduced opacity/italicized).
 - **Inline Expandable Diffs**: Click the chevron icon next to any file in the directory tree to expand the file's diff inline in the sidebar without losing your current main panel view.
 - **Only Changes Filter**: Easily toggle a filter switch to show only files containing changes.
-- **URL State Tracking**: Synchronizes state variables (`repoPath`, `base`, `target`, `file`, `mode`, `layout`) dynamically with the browser's URL search parameters, preserving the exact workspace layout and selection across page refreshes.
+- **Full File Context Toggle**: Toggle the **Full File** button in the toolbar to load the entire file, displaying diff blocks in place inside their full surrounding context.
+- **Binary File Confirmation**: Requires explicit confirmation before rendering binary files in both detailed and inline views, preventing unwanted rendering performance hits.
+- **Dynamic Gitignore Watcher**: Reads and parses the repository's `.gitignore` file dynamically at runtime, using compiled rules to ignore files synchronously in the filesystem watcher (preventing overhead on ignored folders).
+- **URL State Tracking**: Synchronizes state variables (`repoPath`, `base`, `target`, `file`, `mode`, `layout`, `fullContext`) dynamically with the browser's URL search parameters, preserving the exact workspace layout and selection across page refreshes.
 - **Studio Aesthetics**: Premium dark theme powered by a custom CSS variables design system, glassmorphic header blur, smooth transitions, and pulse animations.
 
 ---
@@ -22,7 +25,7 @@ A sleek, premium local web application designed to show per-file diffs and detai
 ## Technical Stack
 
 - **Backend**: Node.js + Express
-- **File Watching**: Chokidar + Git native `.gitignore` validation (`git check-ignore`)
+- **File Watching**: Chokidar + dynamic runtime `.gitignore` matcher
 - **Real-Time Communication**: Server-Sent Events (SSE) for automatic push updates
 - **Frontend**: HTML5 + Vanilla CSS + Vanilla JS (Lucide Icons, Google Fonts)
 - **Zero Build Step**: Pure HTML/JS/CSS served statically from the backend for fast startup and minimal dependency bloat.
@@ -61,7 +64,7 @@ The application will boot up at **`http://localhost:3000`**.
 - *Note: If Live is selected, the green "LIVE WATCH" blinking indicator is active, indicating file modifications are actively tracked.*
 
 ### 3. Filter and Browse Files
-- **Full Repository Tree**: By default, the sidebar shows the complete directory tree of the repository. Folders containing modifications or untracked files are expanded by default and marked with a change indicator dot.
+- **Full Repository Tree**: By default, the sidebar shows the complete directory tree of the repository in a dense, scannable layout. Folders containing modifications or untracked files are expanded by default and marked with a change indicator dot.
 - **Only Changes Filter**: Toggle the "Only Changes" switch to collapse the tree and show only modified, added, renamed, or untracked files.
 - **Color-Coded Statuses & Ignored Files**:
   - **Modified (M)**, **Added (A)**, **Deleted (D)**, and **Renamed (R)** files are highlighted in their respective status colors.
@@ -71,10 +74,12 @@ The application will boot up at **`http://localhost:3000`**.
 - Click a file to open the detailed file view.
 - Click the **Chevron Icon** (`>`) on the right of any file list item to expand the diff inline in the sidebar without losing your current main panel view.
 
-### 4. Diff Layout Modes
+### 4. Diff Layout & Context Modes
 In the top-right toolbar of the main panel:
 - Click **Unified** to see edits inline with traditional red-deletion and green-addition lines.
 - Click **Split** to see the original file version side-by-side with the modified version. Deleted lines will align horizontally with added lines, and unmodified/normal context is aligned line-by-line.
+- Click **Full File** to show the entire file contents. The diff hunks are rendered in place within the rest of the unmodified file contents.
+- **Binary Files**: Opening a binary file will display a prompt asking for confirmation before loading. Click "Confirm and Render" to display its status/metadata.
 
 ### 5. Inspect Line Blames
 1. Open a file in the detailed workspace panel.

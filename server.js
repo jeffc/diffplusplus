@@ -609,6 +609,57 @@ app.get('/api/blame', async (req, res) => {
   }
 });
 
+// Helper to parse gitignore globs to regexes
+function parseGitignore(repoPath) {
+  const rules = [
+    /node_modules($|\/.*)/ // always ignore node_modules
+  ];
+  
+  const gitignorePath = path.join(repoPath, '.gitignore');
+  if (fs.existsSync(gitignorePath)) {
+    try {
+      const content = fs.readFileSync(gitignorePath, 'utf8');
+      content.split('\n')
+        .map(line => line.trim())
+        .filter(line => line && !line.startsWith('#'))
+        .forEach(rule => {
+          // Convert gitignore globs to regexes
+          let regexStr = rule
+            .replace(/[-\/\\^$+?.()|[\]{}]/g, '\\$&') // escape all except *
+            .replace(/\*/g, '.*'); // convert * to .*
+            
+          // Handle directories
+          if (rule.endsWith('/')) {
+            regexStr = regexStr + '?.*';
+          } else {
+            regexStr = regexStr + '($|/.*)';
+          }
+          
+          // Handle leading slash (match from root)
+          if (rule.startsWith('/')) {
+            regexStr = '^' + regexStr.substring(1);
+          } else {
+            regexStr = '(^|/)' + regexStr;
+          }
+          
+          try {
+            rules.push(new RegExp(regexStr));
+          } catch (e) {
+            // skip invalid regexes
+          }
+        });
+    } catch (e) {
+      // ignore read errors
+    }
+  }
+
+  return (filePath) => {
+    const relPath = path.relative(repoPath, filePath).replace(/\\/g, '/');
+    if (!relPath) return false;
+    return rules.some(regex => regex.test(relPath));
+  };
+}
+
 // Helper for check-ignore
 function isIgnoredByGit(filePath, repoPath) {
   return new Promise((resolve) => {
@@ -637,25 +688,17 @@ app.get('/api/watch', (req, res) => {
     res.write(': heartbeat\n\n');
   }, 30000);
 
-  // Initialize chokidar watcher
-  // Ignore hidden files (like .git), node_modules, and common build/output/temp folders/files
+  // Initialize gitignore matcher
+  let gitignoreMatcher = parseGitignore(currentRepoPath);
+
+  // Initialize chokidar watcher using parsed gitignore rules
   const watcher = chokidar.watch(currentRepoPath, {
-    ignored: [
-      /(^|[\/\\])\../,            // dotfiles/dotfolders
-      '**/node_modules/**',      // node_modules
-      '**/dist/**',
-      '**/build/**',
-      '**/out/**',
-      '**/.next/**',
-      '**/.nuxt/**',
-      '**/.cache/**',
-      '**/tmp/**',
-      '**/temp/**',
-      '**/target/**',
-      '**/bin/**',
-      '**/obj/**',
-      '**/*.log'
-    ],
+    ignored: (filePath) => {
+      // Always ignore .git directory
+      const rel = path.relative(currentRepoPath, filePath);
+      if (rel.split(path.sep).includes('.git')) return true;
+      return gitignoreMatcher(filePath);
+    },
     persistent: true,
     ignoreInitial: true,
     followSymlinks: false
@@ -663,6 +706,11 @@ app.get('/api/watch', (req, res) => {
 
   const sendFileChange = async (event, filePath) => {
     const relativePath = path.relative(currentRepoPath, filePath);
+    
+    // If gitignore changes, rebuild the matcher
+    if (relativePath === '.gitignore') {
+      gitignoreMatcher = parseGitignore(currentRepoPath);
+    }
     
     // Check if git ignores this file
     const ignored = await isIgnoredByGit(relativePath, currentRepoPath);

@@ -123,6 +123,27 @@ body {
   transform: none !important;
 }
 
+.btn-xs {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background-color: var(--bg-surface-active);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  line-height: 1.2;
+}
+
+.btn-xs:hover {
+  background-color: var(--bg-surface-hover);
+  border-color: var(--border-color-focus);
+}
+
 /* ==========================================================================
    Header Styles
    ========================================================================== */
@@ -497,18 +518,18 @@ body {
 .tree-folder {
   display: flex;
   flex-direction: column;
-  margin-bottom: 2px;
+  margin-bottom: 0px;
 }
 
 .tree-folder-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
+  gap: 6px;
+  padding: 3px 6px;
   border-radius: var(--radius-md);
   cursor: pointer;
   user-select: none;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   color: var(--text-primary);
   transition: all var(--transition-fast);
@@ -519,8 +540,8 @@ body {
 }
 
 .tree-folder-header i {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   color: var(--text-secondary);
 }
 
@@ -544,11 +565,11 @@ body {
 .folder-has-changes::after {
   content: "";
   display: inline-block;
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
   background-color: var(--color-primary);
   border-radius: 50%;
-  margin-left: 6px;
+  margin-left: 4px;
   vertical-align: middle;
   box-shadow: 0 0 4px var(--color-primary);
 }
@@ -556,11 +577,11 @@ body {
 .tree-folder-children {
   display: flex;
   flex-direction: column;
-  padding-left: 12px;
+  padding-left: 10px;
   border-left: 1px dashed var(--border-color);
-  margin-left: 14px;
-  margin-top: 2px;
-  gap: 2px;
+  margin-left: 11px;
+  margin-top: 1px;
+  gap: 1px;
 }
 
 .tree-folder-children.collapsed {
@@ -588,8 +609,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 8px;
-  font-size: 13px;
+  padding: 3px 6px;
+  font-size: 12px;
   cursor: pointer;
   user-select: none;
   min-width: 0;
@@ -598,14 +619,14 @@ body {
 .tree-file-left {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
   flex: 1;
 }
 
 .tree-file-left i {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   color: var(--text-muted);
   flex-shrink: 0;
 }

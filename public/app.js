@@ -18,6 +18,8 @@ const state = {
   
   diffLayout: 'unified',   // 'unified' | 'split'
   viewMode: 'diff',        // 'diff' | 'blame'
+  fullContext: false,      // toggle showing entire file in diff view
+  confirmedBinaryFiles: new Set(), // set of binary file paths confirmed by user to render
   
   onlyChanged: false,      // only show changed files filter toggle
   expandedFolders: new Set(), // paths of currently expanded directory folders in the tree
@@ -55,6 +57,8 @@ const detailFileRename = document.getElementById('detailFileRename');
 const unifiedFormatBtn = document.getElementById('unifiedFormatBtn');
 const splitFormatBtn = document.getElementById('splitFormatBtn');
 const diffFormatToggleGroup = document.getElementById('diffFormatToggleGroup');
+const fullContextBtn = document.getElementById('fullContextBtn');
+const fullContextToggleGroup = document.getElementById('fullContextToggleGroup');
 const modeDiffBtn = document.getElementById('modeDiffBtn');
 const modeBlameBtn = document.getElementById('modeBlameBtn');
 
@@ -165,6 +169,7 @@ function initApp() {
   // Layout & Mode toggle listeners
   unifiedFormatBtn.addEventListener('click', () => setDiffLayout('unified'));
   splitFormatBtn.addEventListener('click', () => setDiffLayout('split'));
+  fullContextBtn.addEventListener('click', toggleFullContext);
   modeDiffBtn.addEventListener('click', () => setViewMode('diff'));
   modeBlameBtn.addEventListener('click', () => setViewMode('blame'));
 
@@ -241,6 +246,7 @@ async function loadRepoFromPath(pathVal, initialLoad = false) {
     
     updateRepoStatusUI();
     
+    state.confirmedBinaryFiles.clear();
     if (!initialLoad) {
       state.baseRef = 'HEAD';
       state.targetRef = '__live__';
@@ -281,6 +287,7 @@ async function loadRepoData(initialLoad = false) {
       const urlTarget = params.get('target');
       const urlLayout = params.get('layout');
       const urlMode = params.get('mode');
+      const urlFullContext = params.get('fullContext');
 
       if (urlBase) state.baseRef = urlBase;
       else state.baseRef = state.currentBranch || 'HEAD';
@@ -290,6 +297,11 @@ async function loadRepoData(initialLoad = false) {
       
       if (urlLayout) state.diffLayout = urlLayout;
       if (urlMode) state.viewMode = urlMode;
+      if (urlFullContext === 'true') {
+        state.fullContext = true;
+      } else {
+        state.fullContext = false;
+      }
 
       // Sync toggles in UI
       if (urlLayout) {
@@ -299,6 +311,9 @@ async function loadRepoData(initialLoad = false) {
       if (urlMode) {
         modeDiffBtn.classList.toggle('active', state.viewMode === 'diff');
         modeBlameBtn.classList.toggle('active', state.viewMode === 'blame');
+      }
+      if (fullContextBtn) {
+        fullContextBtn.classList.toggle('active', state.fullContext === true);
       }
     }
 
@@ -648,6 +663,9 @@ async function loadDetailedContent() {
     diffViewerPanel.style.display = 'block';
     blameViewerPanel.style.display = 'none';
     diffFormatToggleGroup.style.visibility = 'visible';
+    if (fullContextToggleGroup) {
+      fullContextToggleGroup.style.display = 'flex';
+    }
     
     diffViewerPanel.innerHTML = '<div class="loader-container"><div class="spinner"></div><div>Loading diff...</div></div>';
     
@@ -660,6 +678,9 @@ async function loadDetailedContent() {
       });
       if (state.selectedFile.oldPath) {
         params.append('oldFilePath', state.selectedFile.oldPath);
+      }
+      if (state.fullContext) {
+        params.append('fullContext', 'true');
       }
 
       const res = await fetch(`/api/file-diff?${params.toString()}`);
@@ -676,6 +697,9 @@ async function loadDetailedContent() {
     diffViewerPanel.style.display = 'none';
     blameViewerPanel.style.display = 'block';
     diffFormatToggleGroup.style.visibility = 'hidden';
+    if (fullContextToggleGroup) {
+      fullContextToggleGroup.style.display = 'none';
+    }
     
     blameViewerPanel.innerHTML = '<div class="loader-container"><div class="spinner"></div><div>Running git blame...</div></div>';
 
@@ -709,6 +733,20 @@ function renderDetailedDiff(diffData) {
   }
   
   if (diffData.isBinary) {
+    if (!state.confirmedBinaryFiles.has(diffData.newPath)) {
+      diffViewerPanel.innerHTML = `
+        <div class="binary-diff-info">
+          <i data-lucide="binary"></i>
+          <h3>Binary File Detected</h3>
+          <p>This file is a binary file. Render contents/diff?</p>
+          <button class="btn btn-primary" onclick="confirmRenderBinary('${escapeJsString(diffData.newPath)}')">
+            Confirm and Render
+          </button>
+        </div>
+      `;
+      lucide.createIcons();
+      return;
+    }
     diffViewerPanel.innerHTML = `
       <div class="binary-diff-info">
         <i data-lucide="binary"></i>
@@ -1018,6 +1056,19 @@ async function fetchAndRenderInlineDiff(file, inlineContainer) {
     }
     
     if (diffData.isBinary) {
+      if (!state.confirmedBinaryFiles.has(file.path)) {
+        inlineContainer.innerHTML = `
+          <div style="font-size: 11px; padding: 6px; color: var(--text-muted); display: flex; align-items: center; gap: 8px;">
+            <i data-lucide="binary" style="width: 12px; height: 12px; display: inline; vertical-align: middle;"></i>
+            <span>Binary file.</span>
+            <button class="btn-xs" onclick="confirmRenderBinaryInline('${escapeJsString(file.path)}', '${escapeJsString(inlineContainer.id)}')">
+              Confirm & Render
+            </button>
+          </div>
+        `;
+        lucide.createIcons();
+        return;
+      }
       inlineContainer.innerHTML = '<div style="font-size: 11px; color: var(--text-muted);"><i data-lucide="binary" style="width: 12px; height: 12px; display: inline; vertical-align: middle;"></i> Binary file.</div>';
       return;
     }
@@ -1051,6 +1102,9 @@ function setViewMode(mode) {
   state.viewMode = mode;
   modeDiffBtn.classList.toggle('active', mode === 'diff');
   modeBlameBtn.classList.toggle('active', mode === 'blame');
+  if (fullContextToggleGroup) {
+    fullContextToggleGroup.style.display = mode === 'diff' ? 'flex' : 'none';
+  }
   if (state.selectedFile) {
     loadDetailedContent();
   }
@@ -1403,6 +1457,30 @@ function syncStateToUrl() {
   url.searchParams.set('file', state.selectedFile ? state.selectedFile.path : '');
   url.searchParams.set('mode', state.viewMode || '');
   url.searchParams.set('layout', state.diffLayout || '');
+  url.searchParams.set('fullContext', state.fullContext ? 'true' : 'false');
   
   window.history.replaceState({}, '', url.pathname + url.search);
 }
+
+function toggleFullContext() {
+  state.fullContext = !state.fullContext;
+  fullContextBtn.classList.toggle('active', state.fullContext);
+  loadDetailedContent();
+  syncStateToUrl();
+}
+
+window.confirmRenderBinary = (filePath) => {
+  state.confirmedBinaryFiles.add(filePath);
+  loadDetailedContent();
+};
+
+window.confirmRenderBinaryInline = (filePath, containerId) => {
+  state.confirmedBinaryFiles.add(filePath);
+  const container = document.getElementById(containerId);
+  if (container) {
+    const file = state.files.find(f => f.path === filePath);
+    if (file) {
+      fetchAndRenderInlineDiff(file, container);
+    }
+  }
+};
