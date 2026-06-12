@@ -134,13 +134,13 @@ app.get('/api/refs', async (req, res) => {
   }
 });
 
-// Helper to recursively list files in directory, ignoring .git and node_modules
+// Helper to recursively list files in directory, ignoring .git
 function getFilesRecursive(dir, baseDir) {
   let files = [];
   try {
     const list = fs.readdirSync(dir);
     for (const item of list) {
-      if (item === '.git' || item === 'node_modules') continue;
+      if (item === '.git') continue;
       const fullPath = path.join(dir, item);
       const stat = fs.lstatSync(fullPath);
       if (stat.isDirectory() && !stat.isSymbolicLink()) {
@@ -405,6 +405,10 @@ app.get('/api/file-diff', async (req, res) => {
     let diffOutput = '';
     const diffArgs = ['diff', '--no-color'];
 
+    if (req.query.fullContext === 'true') {
+      diffArgs.push('-U999999');
+    }
+
     if (target === '__live__') {
       if (oldFilePath && oldFilePath !== filePath) {
         diffArgs.push(base, '--', oldFilePath, filePath);
@@ -611,9 +615,7 @@ app.get('/api/blame', async (req, res) => {
 
 // Helper to parse gitignore globs to regexes
 function parseGitignore(repoPath) {
-  const rules = [
-    /node_modules($|\/.*)/ // always ignore node_modules
-  ];
+  const rules = [];
   
   const gitignorePath = path.join(repoPath, '.gitignore');
   if (fs.existsSync(gitignorePath)) {
