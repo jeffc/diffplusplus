@@ -332,7 +332,7 @@ function clearRepoData() {
   stopFileWatch();
 }
 
-async function fetchDiffList(initialLoad = false) {
+async function fetchDiffList(initialLoad = false, shouldReloadDetails = true) {
   if (!state.isRepo) return;
 
   try {
@@ -363,7 +363,9 @@ async function fetchDiffList(initialLoad = false) {
       const stillExists = state.files.find(f => f.path === state.selectedFile.path);
       if (stillExists) {
         state.selectedFile = stillExists;
-        loadDetailedContent();
+        if (shouldReloadDetails) {
+          loadDetailedContent();
+        }
       } else if (state.viewMode !== 'blame') {
         hideDetailView();
         showToast('Info', 'Selected file has no differences anymore', 'info');
@@ -1072,6 +1074,9 @@ function setupFileWatch() {
   const url = `/api/watch`;
   state.sseSource = new EventSource(url);
   const connectionTime = Date.now();
+  
+  let refreshTimeout = null;
+  const changedPathsSinceLastRefresh = new Set();
 
   watchIndicator.classList.add('active');
 
@@ -1079,24 +1084,40 @@ function setupFileWatch() {
     try {
       const data = JSON.parse(event.data);
       if (data.event) {
-        // Trigger auto-refresh of file list & detailed view
-        fetchDiffList();
-        
-        // Suppress notification toasts and highlights that trigger within 2.5s of watcher connection
-        const isInitialEvent = (Date.now() - connectionTime) < 2500;
-
-        if (!isInitialEvent) {
-          // Flash modified file item in sidebar if it's rendered
-          setTimeout(() => {
-            const fileWrapper = document.getElementById(`file-wrapper-${data.path.replace(/[^a-zA-Z0-9]/g, '_')}`);
-            if (fileWrapper) {
-              fileWrapper.classList.add('pulse-highlight');
-              setTimeout(() => fileWrapper.classList.remove('pulse-highlight'), 1500);
-            }
-          }, 300);
-
-          showToast('File Changed', `${data.path} has been updated. Auto-refreshed!`, 'success');
+        if (data.path) {
+          changedPathsSinceLastRefresh.add(data.path);
         }
+
+        if (refreshTimeout) clearTimeout(refreshTimeout);
+        refreshTimeout = setTimeout(() => {
+          const paths = Array.from(changedPathsSinceLastRefresh);
+          changedPathsSinceLastRefresh.clear();
+
+          if (paths.length === 0) return;
+
+          const openFileChanged = state.selectedFile && paths.includes(state.selectedFile.path);
+          fetchDiffList(false, openFileChanged);
+
+          // Suppress notification toasts and highlights that trigger within 2.5s of watcher connection
+          const isInitialEvent = (Date.now() - connectionTime) < 2500;
+
+          if (!isInitialEvent) {
+            // Flash modified file items in sidebar
+            paths.forEach(p => {
+              const fileWrapper = document.getElementById(`file-wrapper-${p.replace(/[^a-zA-Z0-9]/g, '_')}`);
+              if (fileWrapper) {
+                fileWrapper.classList.add('pulse-highlight');
+                setTimeout(() => fileWrapper.classList.remove('pulse-highlight'), 1500);
+              }
+            });
+
+            if (paths.length === 1) {
+              showToast('File Changed', `${paths[0]} has been updated. Auto-refreshed!`, 'success');
+            } else {
+              showToast('Files Changed', `${paths.length} files have been updated. Auto-refreshed!`, 'success');
+            }
+          }
+        }, 300);
       }
     } catch (e) {
       // Ignore parse errors

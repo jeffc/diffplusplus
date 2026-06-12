@@ -638,11 +638,23 @@ app.get('/api/watch', (req, res) => {
   }, 30000);
 
   // Initialize chokidar watcher
-  // Ignore hidden files (like .git) and node_modules
+  // Ignore hidden files (like .git), node_modules, and common build/output/temp folders/files
   const watcher = chokidar.watch(currentRepoPath, {
     ignored: [
       /(^|[\/\\])\../,            // dotfiles/dotfolders
       '**/node_modules/**',      // node_modules
+      '**/dist/**',
+      '**/build/**',
+      '**/out/**',
+      '**/.next/**',
+      '**/.nuxt/**',
+      '**/.cache/**',
+      '**/tmp/**',
+      '**/temp/**',
+      '**/target/**',
+      '**/bin/**',
+      '**/obj/**',
+      '**/*.log'
     ],
     persistent: true,
     ignoreInitial: true,
@@ -654,6 +666,7 @@ app.get('/api/watch', (req, res) => {
     
     // Check if git ignores this file
     const ignored = await isIgnoredByGit(relativePath, currentRepoPath);
+    console.log(`[Watcher] ${event} on ${relativePath} (ignored: ${ignored})`);
     if (!ignored) {
       res.write(`data: ${JSON.stringify({ event, path: relativePath })}\n\n`);
     }
