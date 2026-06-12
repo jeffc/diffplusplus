@@ -524,12 +524,12 @@ body {
 .tree-folder-header {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 3px 6px;
-  border-radius: var(--radius-md);
+  gap: 4px;
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   user-select: none;
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 500;
   color: var(--text-primary);
   transition: all var(--transition-fast);
@@ -540,8 +540,8 @@ body {
 }
 
 .tree-folder-header i {
-  width: 12px;
-  height: 12px;
+  width: 10px;
+  height: 10px;
   color: var(--text-secondary);
 }
 
@@ -565,21 +565,21 @@ body {
 .folder-has-changes::after {
   content: "";
   display: inline-block;
-  width: 5px;
-  height: 5px;
+  width: 4px;
+  height: 4px;
   background-color: var(--color-primary);
   border-radius: 50%;
-  margin-left: 4px;
+  margin-left: 3px;
   vertical-align: middle;
-  box-shadow: 0 0 4px var(--color-primary);
+  box-shadow: 0 0 3px var(--color-primary);
 }
 
 .tree-folder-children {
   display: flex;
   flex-direction: column;
-  padding-left: 10px;
+  padding-left: 8px;
   border-left: 1px dashed var(--border-color);
-  margin-left: 11px;
+  margin-left: 8px;
   margin-top: 1px;
   gap: 1px;
 }
@@ -591,7 +591,7 @@ body {
 .tree-file-row {
   display: flex;
   flex-direction: column;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   transition: all var(--transition-fast);
 }
 
@@ -609,8 +609,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 3px 6px;
-  font-size: 12px;
+  padding: 2px 4px;
+  font-size: 11.5px;
   cursor: pointer;
   user-select: none;
   min-width: 0;
@@ -619,14 +619,14 @@ body {
 .tree-file-left {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
   flex: 1;
 }
 
 .tree-file-left i {
-  width: 12px;
-  height: 12px;
+  width: 10px;
+  height: 10px;
   color: var(--text-muted);
   flex-shrink: 0;
 }
@@ -647,8 +647,26 @@ body {
 .tree-file-right {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   flex-shrink: 0;
+}
+
+/* Scale down badge and expand button inside tree file header */
+.tree-file-header .file-badge {
+  font-size: 8px;
+  font-weight: 800;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+}
+
+.tree-file-header .expand-diff-btn {
+  padding: 1px;
+}
+
+.tree-file-header .expand-diff-btn i {
+  width: 10px;
+  height: 10px;
 }
 
 /* Highlight changed files in tree */

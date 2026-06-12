@@ -557,8 +557,9 @@ function renderFilesList() {
   const container = filesListContainer;
   container.innerHTML = '';
 
-  // Filter list of files based on search term and changes toggle
+  // Filter list of files based on search term and changes toggle (excluding ignored files)
   const filteredFiles = state.files.filter(file => {
+    if (file.isIgnored) return false;
     const matchesSearch = file.path.toLowerCase().includes(state.searchTerm);
     const matchesChanges = !state.onlyChanged || (file.status !== 'unchanged' || file.isUntracked);
     return matchesSearch && matchesChanges;
@@ -629,8 +630,13 @@ function selectFile(file, shouldSync = true) {
   mainEmptyState.style.display = 'none';
 
   // Populate header details
-  detailFileBadge.className = `file-status-badge ${getBadgeClass(file.status)}`;
-  detailFileBadge.innerText = file.status === 'R' ? 'RENAMED' : file.status === 'A' ? 'ADDED' : file.status === 'D' ? 'DELETED' : 'MODIFIED';
+  if (file.isUntracked) {
+    detailFileBadge.className = 'file-status-badge badge-untracked';
+    detailFileBadge.innerText = 'UNTRACKED';
+  } else {
+    detailFileBadge.className = `file-status-badge ${getBadgeClass(file.status)}`;
+    detailFileBadge.innerText = file.status === 'R' ? 'RENAMED' : file.status === 'A' ? 'ADDED' : file.status === 'D' ? 'DELETED' : 'MODIFIED';
+  }
   detailFilePath.innerText = file.path;
   
   if (file.status === 'R' && file.oldPath) {
@@ -1333,7 +1339,7 @@ function renderFileTreeHTML(node, depth = 0) {
     const isExpanded = state.expandedSummaryFiles.has(file.path);
     const isIgnored = file.isIgnored;
     const isUntracked = file.isUntracked;
-    const isChanged = file.status !== 'unchanged';
+    const isChanged = file.status !== 'unchanged' && !isUntracked;
 
     let fileClass = 'tree-file-row';
     if (isSelected) fileClass += ' active';
