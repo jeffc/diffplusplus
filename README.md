@@ -10,7 +10,7 @@ A sleek, premium local web application designed to show per-file diffs and detai
 - **Versatile Comparisons**: Compare any two git references—branches, tags, commits, or the active **Live State (Working Tree)**.
 - **Real-Time Workspace Watcher**: When comparing against the Live State, the app watches your files (respecting `.gitignore` exclusions) and automatically reloads the diff list and editor views when modifications are saved.
 - **Dual Diff Formats**: Toggle between a **Unified** (single-column inline) diff and a premium **Split** (side-by-side) diff.
-- **Git Blame Mode**: Hides diff annotations to show a line-by-line file blame. Commits are hashed to stable, distinct HSL colors for immediate visual clustering, with interactive summaries available via hover tooltips.
+- **Git Blame Mode**: Hides diff annotations to show a line-by-line file blame. Groups consecutive lines written in the same commit to span a single metadata block. Commits are mapped to a hand-curated palette of 16 highly distinct, premium HSL colors for clear visual separation, with full commit details available on hover.
 - **Inline Expandable Summary**: View changes directly in the sidebar file list by expanding a file card, or open it in the main workspace for full detailed editing context.
 - **Studio Aesthetics**: Premium dark theme powered by a custom CSS variables design system, glassmorphic header blur, smooth transitions, and pulse animations.
 
