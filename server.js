@@ -30,6 +30,21 @@ function runGit(args, repoPath) {
   });
 }
 
+// Helper to run git commands and return a Buffer
+function runGitBuffer(args, repoPath) {
+  return new Promise((resolve, reject) => {
+    if (!repoPath) {
+      return reject(new Error('No repository path configured'));
+    }
+    execFile('git', args, { cwd: repoPath, encoding: 'buffer', maxBuffer: 15 * 1024 * 1024 }, (error, stdout, stderr) => {
+      if (error) {
+        return reject({ error, stderr, stdout });
+      }
+      resolve(stdout);
+    });
+  });
+}
+
 // Check if directory is a valid git repository
 async function isValidGitRepo(repoPath) {
   try {
@@ -432,6 +447,48 @@ app.get('/api/file-diff', async (req, res) => {
     }
 
     const parsedDiff = parseRawDiff(diffOutput, filePath, oldFilePath);
+
+    if (parsedDiff.hunks.length === 0 && !parsedDiff.isBinary) {
+      try {
+        let buffer;
+        if (target === '__live__') {
+          const fullPath = path.join(currentRepoPath, filePath);
+          if (fs.existsSync(fullPath)) {
+            buffer = fs.readFileSync(fullPath);
+          } else {
+            buffer = Buffer.alloc(0);
+          }
+        } else {
+          buffer = await runGitBuffer(['show', `${target}:${filePath}`], currentRepoPath);
+        }
+
+        // Check if binary
+        const checkLimit = Math.min(buffer.length, 8000);
+        let isBinary = false;
+        for (let i = 0; i < checkLimit; i++) {
+          if (buffer[i] === 0) {
+            isBinary = true;
+            break;
+          }
+        }
+
+        if (isBinary) {
+          parsedDiff.isBinary = true;
+        } else {
+          const contentStr = buffer.toString('utf8');
+          if (buffer.length > 2 * 1024 * 1024) {
+            parsedDiff.isLarge = true;
+            parsedDiff.size = buffer.length;
+          } else {
+            parsedDiff.isUnchangedFile = true;
+            parsedDiff.content = contentStr;
+          }
+        }
+      } catch (err) {
+        // Fail silently and return empty hunks
+      }
+    }
+
     res.json(parsedDiff);
   } catch (err) {
     res.status(500).json({ error: 'Failed to parse file diff', details: err.message });

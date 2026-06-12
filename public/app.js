@@ -736,6 +736,23 @@ async function loadDetailedContent() {
 // Diff and Blame Custom Renderers
 // ==========================================================================
 function renderDetailedDiff(diffData) {
+  if (diffData.isUnchangedFile && diffData.content !== undefined) {
+    const lines = diffData.content.split('\n');
+    diffData.hunks = [{
+      oldStart: 1,
+      oldLines: lines.length,
+      newStart: 1,
+      newLines: lines.length,
+      header: `@@ -1,${lines.length} +1,${lines.length} @@`,
+      lines: lines.map((line, idx) => ({
+        type: 'normal',
+        oldLine: idx + 1,
+        newLine: idx + 1,
+        content: ' ' + line
+      }))
+    }];
+  }
+
   if (diffData.isLarge) {
     diffViewerPanel.innerHTML = `
       <div class="binary-diff-info">
@@ -821,7 +838,7 @@ function renderUnifiedDiff(diffData, targetElement, hideHunkHeaders = false) {
           <td class="diff-gutter">${oldLineVal}</td>
           <td class="diff-gutter">${newLineVal}</td>
           <td class="diff-marker">${marker}</td>
-          <td class="diff-code">${escapeHtml(line.content.substring(1))}</td>
+          <td class="diff-code">${highlightCodeLine(line.content.substring(1), diffData.newPath || diffData.oldPath)}</td>
         </tr>
       `;
     });
@@ -862,7 +879,7 @@ function renderSplitDiff(diffData, targetElement, hideHunkHeaders = false) {
             <div class="split-cell-inner">
               <span class="diff-gutter">${oldLineVal}</span>
               <span class="diff-marker">${marker}</span>
-              <span class="diff-code">${escapeHtml(content)}</span>
+              <span class="diff-code">${highlightCodeLine(content, diffData.newPath || diffData.oldPath)}</span>
             </div>
           </td>
         `;
@@ -890,7 +907,7 @@ function renderSplitDiff(diffData, targetElement, hideHunkHeaders = false) {
             <div class="split-cell-inner">
               <span class="diff-gutter">${newLineVal}</span>
               <span class="diff-marker">${marker}</span>
-              <span class="diff-code">${escapeHtml(content)}</span>
+              <span class="diff-code">${highlightCodeLine(content, diffData.newPath || diffData.oldPath)}</span>
             </div>
           </td>
         `;
@@ -994,7 +1011,7 @@ function renderDetailedBlame(blameData) {
           ${group.lines.map(line => `
             <div class="blame-line-row">
               <div class="blame-line-num">${line.resultLine}</div>
-              <div class="blame-code">${escapeHtml(line.content)}</div>
+              <div class="blame-code">${highlightCodeLine(line.content, state.selectedFile.path)}</div>
             </div>
           `).join('')}
         </div>
@@ -1070,6 +1087,23 @@ async function fetchAndRenderInlineDiff(file, inlineContainer) {
     if (!res.ok) throw new Error();
     const diffData = await res.json();
     
+    if (diffData.isUnchangedFile && diffData.content !== undefined) {
+      const lines = diffData.content.split('\n');
+      diffData.hunks = [{
+        oldStart: 1,
+        oldLines: lines.length,
+        newStart: 1,
+        newLines: lines.length,
+        header: `@@ -1,${lines.length} +1,${lines.length} @@`,
+        lines: lines.map((line, idx) => ({
+          type: 'normal',
+          oldLine: idx + 1,
+          newLine: idx + 1,
+          content: ' ' + line
+        }))
+      }];
+    }
+
     if (diffData.isLarge) {
       inlineContainer.innerHTML = '<div style="font-size: 11px; color: var(--text-muted);">File too large to preview inline.</div>';
       return;
@@ -1281,6 +1315,59 @@ function escapeHtml(str) {
 function escapeJsString(str) {
   if (!str) return '';
   return str.replace(/'/g, "\\'").replace(/"/g, '\\"');
+}
+
+function getLanguageFromExtension(filePath) {
+  if (!filePath) return 'plaintext';
+  const ext = filePath.split('.').pop().toLowerCase();
+  const map = {
+    'js': 'javascript',
+    'jsx': 'javascript',
+    'ts': 'typescript',
+    'tsx': 'typescript',
+    'json': 'json',
+    'html': 'xml',
+    'htm': 'xml',
+    'css': 'css',
+    'py': 'python',
+    'rb': 'ruby',
+    'rs': 'rust',
+    'go': 'go',
+    'java': 'java',
+    'cpp': 'cpp',
+    'cxx': 'cpp',
+    'cc': 'cpp',
+    'c': 'c',
+    'h': 'cpp',
+    'hpp': 'cpp',
+    'cs': 'csharp',
+    'sh': 'bash',
+    'bash': 'bash',
+    'zsh': 'bash',
+    'md': 'markdown',
+    'yml': 'yaml',
+    'yaml': 'yaml',
+    'sql': 'sql',
+    'php': 'php',
+    'xml': 'xml',
+    'toml': 'toml',
+    'ini': 'ini',
+    'diff': 'diff',
+    'patch': 'diff',
+  };
+  return map[ext] || 'plaintext';
+}
+
+function highlightCodeLine(lineText, filePath) {
+  const lang = getLanguageFromExtension(filePath);
+  if (!window.hljs || lang === 'plaintext') {
+    return escapeHtml(lineText);
+  }
+  try {
+    return hljs.highlight(lineText, { language: lang, ignoreIllegals: true }).value;
+  } catch (err) {
+    return escapeHtml(lineText);
+  }
 }
 
 // Automatically expand folders that contain changed or untracked files
