@@ -82,10 +82,16 @@
       <div class="sidebar-header">
         <div class="search-container">
           <i data-lucide="search" class="search-icon"></i>
-          <input type="text" id="fileSearchInput" placeholder="Filter changed files..." />
+          <input type="text" id="fileSearchInput" placeholder="Filter files..." />
         </div>
-        <div class="sidebar-stats" id="sidebarStats">
-          No files changed
+        <div class="sidebar-filters">
+          <div class="sidebar-stats" id="sidebarStats">
+            No files changed
+          </div>
+          <label class="filter-toggle" title="Toggle between showing the entire tree and showing changed files only">
+            <input type="checkbox" id="onlyChangedFilter" />
+            <span>Only Changes</span>
+          </label>
         </div>
       </div>
 

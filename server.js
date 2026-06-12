@@ -134,63 +134,29 @@ app.get('/api/refs', async (req, res) => {
   }
 });
 
-// 3. Diff List Endpoint
-app.get('/api/diff', async (req, res) => {
-  const { base, target } = req.query;
-  if (!currentRepoPath) {
-    return res.status(400).json({ error: 'No repository configured' });
-  }
-  if (!base || !target) {
-    return res.status(400).json({ error: 'Both base and target parameters are required' });
-  }
-
+// Helper to recursively list files in directory, ignoring .git and node_modules
+function getFilesRecursive(dir, baseDir) {
+  let files = [];
   try {
-    const fileMap = new Map(); // path -> { path, status, oldPath }
-
-    // Case A: Comparing base against the Live State (Working Tree)
-    if (target === '__live__') {
-      // Get tracked changes (staged + unstaged) compared to base
-      try {
-        const diffStatusOutput = await runGit(['diff', '--name-status', base], currentRepoPath);
-        parseDiffStatus(diffStatusOutput, fileMap);
-      } catch (err) {
-        // If base is empty or invalid ref, diff might fail. Let's capture error details if needed
-      }
-
-      // Get untracked files from git status
-      try {
-        const statusOutput = await runGit(['status', '--porcelain'], currentRepoPath);
-        const lines = statusOutput.split('\n').filter(Boolean);
-        for (const line of lines) {
-          const code = line.substring(0, 2);
-          const filePath = line.substring(3).trim().replace(/^"(.*)"$/, '$1'); // Handle quoted paths
-
-          if (code === '??') {
-            // Untracked file
-            fileMap.set(filePath, { path: filePath, status: 'A', oldPath: null });
-          }
-        }
-      } catch (err) {
-        // ignore status errors
-      }
-    } 
-    // Case B: Comparing base ref vs target ref
-    else {
-      try {
-        const diffStatusOutput = await runGit(['diff', '--name-status', base, target], currentRepoPath);
-        parseDiffStatus(diffStatusOutput, fileMap);
-      } catch (err) {
-        return res.status(500).json({ error: `Git diff failed: ${err.stderr || err.message}` });
+    const list = fs.readdirSync(dir);
+    for (const item of list) {
+      if (item === '.git' || item === 'node_modules') continue;
+      const fullPath = path.join(dir, item);
+      const stat = fs.lstatSync(fullPath);
+      if (stat.isDirectory() && !stat.isSymbolicLink()) {
+        files = files.concat(getFilesRecursive(fullPath, baseDir));
+      } else {
+        files.push(path.relative(baseDir, fullPath));
       }
     }
-
-    res.json({ files: Array.from(fileMap.values()) });
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to retrieve file diff list', details: err.message });
+  } catch (e) {
+    // Ignore folder read errors
   }
-});
+  return files;
+}
 
-function parseDiffStatus(output, fileMap) {
+// Helper to parse git name-status output to map
+function parseDiffStatusToMap(output, map) {
   const lines = output.split('\n').filter(Boolean);
   for (const line of lines) {
     const parts = line.split('\t');
@@ -212,10 +178,152 @@ function parseDiffStatus(output, fileMap) {
         newPath = parts[2].replace(/^"(.*)"$/, '$1');
       }
 
-      fileMap.set(newPath, { path: newPath, status, oldPath });
+      map.set(newPath, { status, oldPath });
     }
   }
 }
+
+// 3. Diff List Endpoint (Whole Repository Tree + Statuses)
+app.get('/api/diff', async (req, res) => {
+  const { base, target } = req.query;
+  if (!currentRepoPath) {
+    return res.status(400).json({ error: 'No repository configured' });
+  }
+  if (!base || !target) {
+    return res.status(400).json({ error: 'Both base and target parameters are required' });
+  }
+
+  try {
+    const fileMap = new Map(); // path -> { path, status, oldPath, isIgnored, isUntracked }
+
+    // Case A: Comparing base against the Live State (Working Tree)
+    if (target === '__live__') {
+      // 1. Scan directory recursively (excluding .git and node_modules)
+      const allDirFiles = getFilesRecursive(currentRepoPath, currentRepoPath);
+
+      // 2. Get tracked files (using git ls-files)
+      const trackedFiles = new Set();
+      try {
+        const lsFilesOutput = await runGit(['ls-files'], currentRepoPath);
+        lsFilesOutput.split('\n').filter(Boolean).forEach(f => trackedFiles.add(f.trim()));
+      } catch (err) {
+        // ignore ls-files errors
+      }
+
+      // 3. Get status of changed files compared to base (M, A, D, R)
+      const diffStatusMap = new Map();
+      try {
+        const diffStatusOutput = await runGit(['diff', '--name-status', base], currentRepoPath);
+        parseDiffStatusToMap(diffStatusOutput, diffStatusMap);
+      } catch (err) {
+        // ignore diff errors
+      }
+
+      // 4. Get untracked files from git status --porcelain
+      const statusPorcelainMap = new Map();
+      try {
+        const statusOutput = await runGit(['status', '--porcelain'], currentRepoPath);
+        const lines = statusOutput.split('\n').filter(Boolean);
+        for (const line of lines) {
+          const code = line.substring(0, 2);
+          const filePath = line.substring(3).trim().replace(/^"(.*)"$/, '$1');
+          statusPorcelainMap.set(filePath, code);
+        }
+      } catch (err) {
+        // ignore status errors
+      }
+
+      // 5. Classify every file found in working directory
+      for (const filePath of allDirFiles) {
+        let status = 'unchanged';
+        let oldPath = null;
+        let isIgnored = false;
+        let isUntracked = false;
+
+        const porcelainCode = statusPorcelainMap.get(filePath);
+        const diffInfo = diffStatusMap.get(filePath);
+
+        if (porcelainCode === '??') {
+          status = 'A';
+          isUntracked = true;
+        } else if (diffInfo) {
+          status = diffInfo.status;
+          oldPath = diffInfo.oldPath;
+        } else if (!trackedFiles.has(filePath) && !porcelainCode) {
+          // Exists on disk, but not tracked by git and not in status -> Ignored!
+          isIgnored = true;
+        }
+
+        fileMap.set(filePath, { path: filePath, status, oldPath, isIgnored, isUntracked });
+      }
+
+      // Also merge deleted files (which exist in base, but deleted in working tree)
+      for (const [filePath, diffInfo] of diffStatusMap.entries()) {
+        if (diffInfo.status === 'D' && !fileMap.has(filePath)) {
+          fileMap.set(filePath, {
+            path: filePath,
+            status: 'D',
+            oldPath: null,
+            isIgnored: false,
+            isUntracked: false
+          });
+        }
+      }
+    } 
+    // Case B: Comparing base ref vs target ref (Committed branches/commits/tags)
+    else {
+      // 1. Get all files in target ref (using git ls-tree)
+      let targetFiles = [];
+      try {
+        const lsTreeOutput = await runGit(['ls-tree', '-r', '--name-only', target], currentRepoPath);
+        targetFiles = lsTreeOutput.split('\n').map(f => f.trim()).filter(Boolean);
+      } catch (err) {
+        // ignore ls-tree errors
+      }
+
+      // 2. Get status of changed files between base and target
+      const diffStatusMap = new Map();
+      try {
+        const diffStatusOutput = await runGit(['diff', '--name-status', base, target], currentRepoPath);
+        parseDiffStatusToMap(diffStatusOutput, diffStatusMap);
+      } catch (err) {
+        return res.status(500).json({ error: `Git diff failed: ${err.stderr || err.message}` });
+      }
+
+      // 3. Add all files in target
+      for (const filePath of targetFiles) {
+        const diffInfo = diffStatusMap.get(filePath);
+        const status = diffInfo ? diffInfo.status : 'unchanged';
+        const oldPath = diffInfo ? diffInfo.oldPath : null;
+
+        fileMap.set(filePath, {
+          path: filePath,
+          status,
+          oldPath,
+          isIgnored: false,
+          isUntracked: false
+        });
+      }
+
+      // Also add deleted files (exist in base, but deleted in target)
+      for (const [filePath, diffInfo] of diffStatusMap.entries()) {
+        if (diffInfo.status === 'D' && !fileMap.has(filePath)) {
+          fileMap.set(filePath, {
+            path: filePath,
+            status: 'D',
+            oldPath: null,
+            isIgnored: false,
+            isUntracked: false
+          });
+        }
+      }
+    }
+
+    res.json({ files: Array.from(fileMap.values()) });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to retrieve file list', details: err.message });
+  }
+});
 
 // 4. File Diff Detailed Endpoint
 app.get('/api/file-diff', async (req, res) => {

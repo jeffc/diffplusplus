@@ -424,13 +424,248 @@ body {
   width: 100%;
 }
 
+.sidebar-filters {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
 .sidebar-stats {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-secondary);
   font-weight: 500;
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+.filter-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+  font-weight: 600;
+}
+
+.filter-toggle input {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 28px;
+  height: 16px;
+  background-color: var(--bg-surface-active);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  position: relative;
+  cursor: pointer;
+  outline: none;
+  transition: background-color var(--transition-fast);
+}
+
+.filter-toggle input::before {
+  content: "";
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background-color: var(--text-secondary);
+  border-radius: 50%;
+  top: 2px;
+  left: 2px;
+  transition: all var(--transition-fast);
+}
+
+.filter-toggle input:checked {
+  background-color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.filter-toggle input:checked::before {
+  left: 14px;
+  background-color: white;
+}
+
+.filter-toggle:hover span {
+  color: var(--text-primary);
+}
+
+/* ==========================================================================
+   Repository Directory Tree Styles
+   ========================================================================== */
+.tree-folder {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 2px;
+}
+
+.tree-folder-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  user-select: none;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  transition: all var(--transition-fast);
+}
+
+.tree-folder-header:hover {
+  background-color: var(--bg-surface-hover);
+}
+
+.tree-folder-header i {
+  width: 14px;
+  height: 14px;
+  color: var(--text-secondary);
+}
+
+.tree-folder-arrow {
+  transition: transform var(--transition-fast);
+  color: var(--text-muted) !important;
+}
+
+.tree-folder-arrow.collapsed {
+  transform: rotate(-90deg);
+}
+
+.tree-folder-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Change indicator dot for folders */
+.folder-has-changes::after {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  background-color: var(--color-primary);
+  border-radius: 50%;
+  margin-left: 6px;
+  vertical-align: middle;
+  box-shadow: 0 0 4px var(--color-primary);
+}
+
+.tree-folder-children {
+  display: flex;
+  flex-direction: column;
+  padding-left: 12px;
+  border-left: 1px dashed var(--border-color);
+  margin-left: 14px;
+  margin-top: 2px;
+  gap: 2px;
+}
+
+.tree-folder-children.collapsed {
+  display: none;
+}
+
+.tree-file-row {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
+}
+
+.tree-file-row:hover {
+  background-color: var(--bg-surface-hover);
+}
+
+.tree-file-row.active {
+  background-color: var(--color-primary-alpha);
+  border: 1px solid var(--color-primary-alpha-strong);
+}
+
+/* File styling */
+.tree-file-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  font-size: 13px;
+  cursor: pointer;
+  user-select: none;
+  min-width: 0;
+}
+
+.tree-file-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.tree-file-left i {
+  width: 14px;
+  height: 14px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.tree-file-name {
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color var(--transition-fast);
+}
+
+.tree-file-row.active .tree-file-name {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.tree-file-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* Highlight changed files in tree */
+.file-changed .tree-file-name {
+  font-weight: 600;
+}
+
+.file-changed-M .tree-file-name { color: var(--status-mod); }
+.file-changed-A .tree-file-name { color: var(--status-add); }
+.file-changed-D .tree-file-name { color: var(--status-del); }
+.file-changed-R .tree-file-name { color: var(--status-ren); }
+
+/* Deemphasize ignored files */
+.file-ignored {
+  opacity: 0.4;
+}
+
+.file-ignored .tree-file-name {
+  font-style: italic;
+  color: var(--text-muted);
+}
+
+/* Untracked styling */
+.file-untracked .tree-file-name {
+  color: #a7f3d0; /* subtle light green */
+}
+
+/* Gutter badge adaptations */
+.badge-untracked {
+  background-color: rgba(16, 185, 129, 0.05);
+  color: rgba(16, 185, 129, 0.7);
+  border: 1px solid rgba(16, 185, 129, 0.15);
+}
+
+.badge-ignored {
+  background-color: rgba(82, 82, 91, 0.08);
+  color: var(--text-muted);
+  border: 1px solid rgba(82, 82, 91, 0.15);
 }
 
 /* Files List */

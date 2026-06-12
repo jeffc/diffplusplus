@@ -19,6 +19,8 @@ const state = {
   diffLayout: 'unified',   // 'unified' | 'split'
   viewMode: 'diff',        // 'diff' | 'blame'
   
+  onlyChanged: false,      // only show changed files filter toggle
+  expandedFolders: new Set(), // paths of currently expanded directory folders in the tree
   expandedSummaryFiles: new Set(), // Set of paths expanded in summary list
   searchTerm: '',
   
@@ -41,6 +43,7 @@ const targetRefResetBtn = document.getElementById('targetRefResetBtn');
 const watchIndicator = document.getElementById('watchIndicator');
 
 const fileSearchInput = document.getElementById('fileSearchInput');
+const onlyChangedFilter = document.getElementById('onlyChangedFilter');
 const sidebarStats = document.getElementById('sidebarStats');
 const filesListContainer = document.getElementById('filesListContainer');
 
@@ -171,6 +174,12 @@ function initApp() {
     renderFilesList();
   });
 
+  // Filter toggle change
+  onlyChangedFilter.addEventListener('change', (e) => {
+    state.onlyChanged = e.target.checked;
+    renderFilesList();
+  });
+
   // Check URL parameters first, fallback to server config
   const params = new URLSearchParams(window.location.search);
   const urlRepoPath = params.get('repoPath');
@@ -237,6 +246,9 @@ async function loadRepoFromPath(pathVal, initialLoad = false) {
       state.targetRef = '__live__';
       state.selectedFile = null;
       state.expandedSummaryFiles.clear();
+      state.expandedFolders.clear();
+      state.onlyChanged = false;
+      if (onlyChangedFilter) onlyChangedFilter.checked = false;
       showToast('Success', 'Repository loaded successfully', 'success');
       syncStateToUrl();
     }
@@ -328,6 +340,10 @@ async function fetchDiffList(initialLoad = false) {
     const data = await res.json();
     
     state.files = data.files || [];
+    
+    // Expand directories containing changes by default
+    expandFoldersWithChanges();
+
     renderFilesList();
     updateStatsUI();
 
@@ -362,6 +378,7 @@ async function fetchDiffList(initialLoad = false) {
 
 async function handleRefsChange() {
   state.expandedSummaryFiles.clear();
+  state.expandedFolders.clear();
   setupFileWatch();
   await fetchDiffList();
   syncStateToUrl();
@@ -511,107 +528,55 @@ function populateDropdowns() {
 }
 
 function updateStatsUI() {
-  if (state.files.length === 0) {
+  const changedCount = state.files.filter(f => f.status !== 'unchanged' || f.isUntracked).length;
+  if (changedCount === 0) {
     sidebarStats.innerText = 'No files changed';
     return;
   }
-  sidebarStats.innerText = `${state.files.length} file${state.files.length > 1 ? 's' : ''} changed`;
+  sidebarStats.innerText = `${changedCount} file${changedCount > 1 ? 's' : ''} changed`;
 }
 
 function renderFilesList() {
   const container = filesListContainer;
   container.innerHTML = '';
 
-  const filteredFiles = state.files.filter(f => 
-    f.path.toLowerCase().includes(state.searchTerm) || 
-    (f.oldPath && f.oldPath.toLowerCase().includes(state.searchTerm))
-  );
+  // Filter list of files based on search term and changes toggle
+  const filteredFiles = state.files.filter(file => {
+    const matchesSearch = file.path.toLowerCase().includes(state.searchTerm);
+    const matchesChanges = !state.onlyChanged || (file.status !== 'unchanged' || file.isUntracked);
+    return matchesSearch && matchesChanges;
+  });
 
   if (filteredFiles.length === 0) {
     container.innerHTML = `
       <div class="empty-list-message">
         <i data-lucide="search-slash"></i>
-        <p>${state.files.length === 0 ? 'No files changed between these states.' : 'No matching files found.'}</p>
+        <p>${state.files.length === 0 ? 'No files found in workspace.' : 'No matching files found.'}</p>
       </div>
     `;
     lucide.createIcons();
     return;
   }
 
-  filteredFiles.forEach(file => {
-    const isSelected = state.selectedFile && state.selectedFile.path === file.path;
-    const isExpanded = state.expandedSummaryFiles.has(file.path);
-    
-    // Create wrapper
-    const wrapper = document.createElement('div');
-    wrapper.className = `file-item-wrapper ${isSelected ? 'active' : ''}`;
-    wrapper.id = `file-wrapper-${file.path.replace(/[^a-zA-Z0-9]/g, '_')}`;
+  // Build tree hierarchy
+  const tree = buildFileTree(filteredFiles);
 
-    // Item contents
-    const item = document.createElement('div');
-    item.className = 'file-item';
-    item.addEventListener('click', (e) => {
-      // Don't trigger selection if clicking the inline expand button
-      if (e.target.closest('.expand-diff-btn')) return;
-      selectFile(file);
-    });
+  // Render tree to HTML
+  container.innerHTML = renderFileTreeHTML(tree);
 
-    const left = document.createElement('div');
-    left.className = 'file-item-left';
-
-    const statusBadge = document.createElement('span');
-    statusBadge.className = `file-badge ${getBadgeClass(file.status)}`;
-    statusBadge.innerText = file.status;
-
-    const nameContainer = document.createElement('div');
-    nameContainer.style.minWidth = '0';
-    
-    const basename = file.path.split('/').pop();
-    const folder = file.path.substring(0, file.path.lastIndexOf('/'));
-
-    const nameSpan = document.createElement('div');
-    nameSpan.className = 'file-name';
-    nameSpan.innerText = basename;
-    nameSpan.title = file.path;
-
-    nameContainer.appendChild(nameSpan);
-    if (folder) {
-      const folderSpan = document.createElement('div');
-      folderSpan.className = 'file-path-folder';
-      folderSpan.innerText = folder;
-      nameContainer.appendChild(folderSpan);
+  // Fetch inline diffs for expanded items
+  state.expandedSummaryFiles.forEach(path => {
+    const wrapperId = `file-wrapper-${path.replace(/[^a-zA-Z0-9]/g, '_')}`;
+    const wrapper = document.getElementById(wrapperId);
+    if (wrapper) {
+      const inlineContainer = wrapper.querySelector('.file-inline-diff-container');
+      if (inlineContainer) {
+        const file = state.files.find(f => f.path === path);
+        if (file) {
+          fetchAndRenderInlineDiff(file, inlineContainer);
+        }
+      }
     }
-
-    left.appendChild(statusBadge);
-    left.appendChild(nameContainer);
-
-    const right = document.createElement('div');
-    right.className = 'file-item-right';
-
-    // Expand Inline Diff Button
-    const expandBtn = document.createElement('button');
-    expandBtn.className = `expand-diff-btn ${isExpanded ? 'expanded' : ''}`;
-    expandBtn.title = isExpanded ? 'Collapse inline diff' : 'Expand inline diff';
-    expandBtn.innerHTML = '<i data-lucide="chevron-right"></i>';
-    expandBtn.addEventListener('click', () => toggleInlineDiff(file, wrapper));
-
-    right.appendChild(expandBtn);
-    item.appendChild(left);
-    item.appendChild(right);
-    wrapper.appendChild(item);
-
-    // If expanded, render inline diff container
-    if (isExpanded) {
-      const inlineContainer = document.createElement('div');
-      inlineContainer.className = 'file-inline-diff-container';
-      inlineContainer.innerHTML = '<div class="spinner"></div>';
-      wrapper.appendChild(inlineContainer);
-      
-      // Fetch and render inline
-      fetchAndRenderInlineDiff(file, inlineContainer);
-    }
-
-    container.appendChild(wrapper);
   });
 
   lucide.createIcons();
@@ -1217,6 +1182,196 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
 }
+
+function escapeJsString(str) {
+  if (!str) return '';
+  return str.replace(/'/g, "\\'").replace(/"/g, '\\"');
+}
+
+// Automatically expand folders that contain changed or untracked files
+function expandFoldersWithChanges() {
+  state.files.forEach(file => {
+    if (file.status !== 'unchanged' || file.isUntracked) {
+      const parts = file.path.split('/');
+      let currentPath = '';
+      for (let i = 0; i < parts.length - 1; i++) {
+        currentPath = currentPath ? `${currentPath}/${parts[i]}` : parts[i];
+        state.expandedFolders.add(currentPath);
+      }
+    }
+  });
+}
+
+// Construct nested file tree object
+function buildFileTree(files) {
+  const root = { name: 'root', path: '', type: 'directory', children: {}, hasChanges: false };
+  
+  files.forEach(file => {
+    const parts = file.path.split('/');
+    let current = root;
+    
+    parts.forEach((part, index) => {
+      const isLast = index === parts.length - 1;
+      const currentPath = current.path ? `${current.path}/${part}` : part;
+      
+      const fileHasChanges = file.status !== 'unchanged' || file.isUntracked;
+
+      if (!current.children[part]) {
+        current.children[part] = isLast 
+          ? { name: part, path: currentPath, type: 'file', fileData: file }
+          : { name: part, path: currentPath, type: 'directory', children: {}, hasChanges: false };
+      }
+      
+      if (fileHasChanges) {
+        current.children[part].hasChanges = true;
+      }
+      
+      current = current.children[part];
+    });
+  });
+
+  // Helper to recursively propagate change flag to parent folders
+  function propagateChanges(node) {
+    if (node.type === 'file') {
+      return node.fileData.status !== 'unchanged' || node.fileData.isUntracked;
+    }
+    let nodeHasChanges = false;
+    for (const key in node.children) {
+      const childHasChanges = propagateChanges(node.children[key]);
+      if (childHasChanges) {
+        nodeHasChanges = true;
+      }
+    }
+    node.hasChanges = nodeHasChanges;
+    return nodeHasChanges;
+  }
+  
+  propagateChanges(root);
+  return root;
+}
+
+// Render tree object recursively to HTML
+function renderFileTreeHTML(node, depth = 0) {
+  if (node.type === 'file') {
+    const file = node.fileData;
+    const isSelected = state.selectedFile && state.selectedFile.path === file.path;
+    const isExpanded = state.expandedSummaryFiles.has(file.path);
+    const isIgnored = file.isIgnored;
+    const isUntracked = file.isUntracked;
+    const isChanged = file.status !== 'unchanged';
+
+    let fileClass = 'tree-file-row';
+    if (isSelected) fileClass += ' active';
+    if (isIgnored) fileClass += ' file-ignored';
+    if (isUntracked) fileClass += ' file-untracked';
+    if (isChanged) fileClass += ` file-changed file-changed-${file.status}`;
+
+    let badgeHtml = '';
+    if (isChanged) {
+      badgeHtml = `<span class="file-badge ${getBadgeClass(file.status)}">${file.status}</span>`;
+    } else if (isUntracked) {
+      badgeHtml = `<span class="file-badge badge-untracked">?</span>`;
+    } else if (isIgnored) {
+      badgeHtml = `<span class="file-badge badge-ignored">I</span>`;
+    }
+
+    let inlineDiffHtml = '';
+    if (isExpanded) {
+      inlineDiffHtml = `
+        <div class="file-inline-diff-container" id="inline-diff-${file.path.replace(/[^a-zA-Z0-9]/g, '_')}">
+          <div class="spinner"></div>
+        </div>
+      `;
+    }
+
+    const rowId = `file-wrapper-${file.path.replace(/[^a-zA-Z0-9]/g, '_')}`;
+
+    return `
+      <div class="${fileClass}" id="${rowId}">
+        <div class="tree-file-header" onclick="handleFileClick('${escapeJsString(file.path)}')">
+          <div class="tree-file-left">
+            <i data-lucide="file-text"></i>
+            <span class="tree-file-name" title="${escapeHtml(file.path)}">${escapeHtml(node.name)}</span>
+          </div>
+          <div class="tree-file-right">
+            ${badgeHtml}
+            <button class="expand-diff-btn ${isExpanded ? 'expanded' : ''}" 
+                    title="${isExpanded ? 'Collapse inline diff' : 'Expand inline diff'}" 
+                    onclick="handleInlineToggle(event, '${escapeJsString(file.path)}', '${rowId}')">
+              <i data-lucide="chevron-right"></i>
+            </button>
+          </div>
+        </div>
+        ${inlineDiffHtml}
+      </div>
+    `;
+  }
+
+  // Directory node sorting (directories first, then files alphabetically)
+  const sortedKeys = Object.keys(node.children).sort((a, b) => {
+    const childA = node.children[a];
+    const childB = node.children[b];
+    if (childA.type !== childB.type) {
+      return childA.type === 'directory' ? -1 : 1;
+    }
+    return a.localeCompare(b);
+  });
+
+  const isCollapsed = !state.expandedFolders.has(node.path) && node.path !== '';
+  const folderIcon = isCollapsed ? 'folder' : 'folder-open';
+  const folderHeaderClass = `tree-folder-header ${node.hasChanges ? 'folder-has-changes' : ''}`;
+  
+  let childrenHtml = '';
+  if (!isCollapsed) {
+    childrenHtml = `
+      <div class="tree-folder-children">
+        ${sortedKeys.map(key => renderFileTreeHTML(node.children[key], depth + 1)).join('')}
+      </div>
+    `;
+  }
+
+  if (node.path === '') {
+    return sortedKeys.map(key => renderFileTreeHTML(node.children[key], depth)).join('');
+  }
+
+  return `
+    <div class="tree-folder">
+      <div class="${folderHeaderClass}" onclick="handleFolderClick('${escapeJsString(node.path)}')">
+        <i data-lucide="chevron-right" class="tree-folder-arrow ${isCollapsed ? 'collapsed' : ''}"></i>
+        <i data-lucide="${folderIcon}"></i>
+        <span class="tree-folder-name">${escapeHtml(node.name)}</span>
+      </div>
+      ${childrenHtml}
+    </div>
+  `;
+}
+
+// Global click binders for tree interactivity
+window.handleFileClick = (filePath) => {
+  const file = state.files.find(f => f.path === filePath);
+  if (file) {
+    selectFile(file);
+  }
+};
+
+window.handleFolderClick = (folderPath) => {
+  if (state.expandedFolders.has(folderPath)) {
+    state.expandedFolders.delete(folderPath);
+  } else {
+    state.expandedFolders.add(folderPath);
+  }
+  renderFilesList();
+};
+
+window.handleInlineToggle = (event, filePath, rowId) => {
+  event.stopPropagation();
+  if (state.expandedSummaryFiles.has(filePath)) {
+    state.expandedSummaryFiles.delete(filePath);
+  } else {
+    state.expandedSummaryFiles.add(filePath);
+  }
+  renderFilesList();
+};
 
 function syncStateToUrl() {
   if (!state.repoPath) return;
