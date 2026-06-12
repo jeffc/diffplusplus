@@ -53,9 +53,10 @@ The application will boot up at **`http://localhost:3000`**.
 4. The status badge will change to a green **VALID REPO** state, and the comparison selectors will populate.
 
 ### 2. Configure Your Comparison
-- **Base Dropdown**: Select the starting reference point (branch, tag, or commit hash). Defaults to your current active branch or `HEAD`.
-- **Target Dropdown**: Select the target comparison state. Select **Live (Working Tree)** to compare against your unsaved/live workspace changes.
-- *Note: If Live is selected, a green "LIVE WATCH" blinking badge appears, indicating active file watching is running.*
+- **Base Selection**: Select your starting ref from the dropdown (contains `HEAD`, local branches only, tags, and the last 10 commits). Defaults to **`HEAD`**.
+- **Target Selection**: Select your target ref from the dropdown (contains `Live (Working Tree)`, `HEAD`, local branches, tags, and the last 10 commits). Defaults to **`Live (Working Tree)`**.
+- **Manual Custom Ref Entry**: For either Base or Target, choose **Custom Ref...** at the bottom of the list. The select dropdown will transition into a text input field where you can enter any arbitrary git reference (such as commit hashes, branches, tags, or expressions like `HEAD~3`). Click the list icon next to the input field to return to the dropdown list.
+- *Note: If Live is selected, the green "LIVE WATCH" blinking indicator is active, indicating file modifications are actively tracked.*
 
 ### 3. Filter and Browse Files
 - Use the **Filter changed files...** input in the sidebar to search by filename or folder structure.
