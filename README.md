@@ -8,7 +8,7 @@ A sleek, premium local web application designed to show per-file diffs and detai
 
 - **Point-and-Explore Repo Loader**: Run the server once and point the UI to any directory on your local machine. If it is a valid Git repository, it loads instantly.
 - **Versatile Comparisons**: Compare any two git references—branches, tags, commits, or the active **Live State (Working Tree)**.
-- **Real-Time Workspace Watcher**: When comparing against the Live State, the app watches your files (respecting `.gitignore` exclusions) and automatically reloads the diff list and editor views when modifications are saved.
+- **Real-Time Workspace Watcher**: When comparing against the Live State, the app watches your files (respecting `.gitignore` exclusions) and automatically reloads the diff list and editor views when modifications are saved, while suppressing startup notification toasts on load.
 - **Dual Diff Formats**: Toggle between a **Unified** (single-column inline) diff and a premium **Split** (side-by-side) diff.
 - **Git Blame Mode**: Hides diff annotations to show a line-by-line file blame. Groups consecutive lines written in the same commit to span a single metadata block. Commits are mapped to a hand-curated palette of 16 highly distinct, premium HSL colors for clear visual separation, with full commit details available on hover.
 - **Inline Expandable Summary**: View changes directly in the sidebar file list by expanding a file card, or open it in the main workspace for full detailed editing context.
