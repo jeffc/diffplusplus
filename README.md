@@ -1,4 +1,4 @@
-# Git Diff & Blame Studio
+# diff++ (Git Diff & Blame Studio)
 
 A sleek, premium local web application designed to show per-file diffs and detailed blame histories for any local Git repository. Point the tool at your repository, compare branches, commits, or your active live workspace, and view real-time updates as you edit files.
 

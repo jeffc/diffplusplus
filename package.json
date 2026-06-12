@@ -1,7 +1,7 @@
 {
   "name": "diff-viewer",
   "version": "1.0.0",
-  "description": "Git Diff & Blame Viewer",
+  "description": "diff++: Git Diff & Blame Viewer",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

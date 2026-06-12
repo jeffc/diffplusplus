@@ -562,5 +562,5 @@ app.get('/api/watch', (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Git Diff Viewer running on http://localhost:${PORT}`);
+  console.log(`diff++ running on http://localhost:${PORT}`);
 });
