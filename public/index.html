@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Git Diff & Blame Viewer</title>
+  <!-- Google Fonts for premium typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <!-- CSS Stylesheet -->
+  <link rel="stylesheet" href="style.css">
+  <!-- Lucide Icons for clean symbols -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+
+  <!-- Top Navigation & Configuration Bar -->
+  <header class="app-header">
+    <div class="header-left">
+      <div class="logo">
+        <i data-lucide="git-fork"></i>
+        <span>GitDiff.io</span>
+      </div>
+      <div class="repo-input-container">
+        <input type="text" id="repoPathInput" placeholder="Enter path to Git repository (e.g. /home/user/project)" />
+        <button id="loadRepoBtn" class="btn btn-primary">
+          <i data-lucide="arrow-right"></i>
+        </button>
+        <span id="repoStatusBadge" class="status-badge status-invalid">
+          <i data-lucide="circle-x"></i> Invalid Repo
+        </span>
+      </div>
+    </div>
+
+    <div class="header-right">
+      <!-- Ref Comparer -->
+      <div class="compare-controls">
+        <div class="select-wrapper">
+          <label for="baseRefSelect">Base</label>
+          <select id="baseRefSelect" disabled>
+            <option value="">Select Base Ref</option>
+          </select>
+        </div>
+
+        <div class="compare-arrow">
+          <i data-lucide="arrow-right-left"></i>
+        </div>
+
+        <div class="select-wrapper">
+          <label for="targetRefSelect">Target</label>
+          <select id="targetRefSelect" disabled>
+            <option value="">Select Target Ref</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Watch Status -->
+      <div class="watch-status-indicator" id="watchIndicator" title="Watching live directory for changes">
+        <span class="pulse-dot"></span>
+        <span class="watch-label">LIVE WATCH</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Workspace Layout -->
+  <main class="app-workspace">
+    <!-- Sidebar: File Summary List -->
+    <aside class="workspace-sidebar">
+      <div class="sidebar-header">
+        <div class="search-container">
+          <i data-lucide="search" class="search-icon"></i>
+          <input type="text" id="fileSearchInput" placeholder="Filter changed files..." />
+        </div>
+        <div class="sidebar-stats" id="sidebarStats">
+          No files changed
+        </div>
+      </div>
+
+      <!-- Changed Files Tree/List -->
+      <div class="files-list" id="filesListContainer">
+        <!-- Rendered dynamically -->
+        <div class="empty-list-message">
+          <i data-lucide="git-pull-request"></i>
+          <p>Please load a valid Git repository to view diffs.</p>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Pane: Detailed File Diff / Blame View -->
+    <section class="workspace-main">
+      <div class="detail-header" id="detailHeader" style="display: none;">
+        <div class="detail-file-info">
+          <span class="file-status-badge" id="detailFileBadge">M</span>
+          <h2 class="file-path-title" id="detailFilePath">src/index.js</h2>
+          <span class="file-path-rename" id="detailFileRename"></span>
+        </div>
+
+        <div class="detail-actions">
+          <!-- Diff Format Toggle (Unified vs Split) -->
+          <div class="toggle-group" id="diffFormatToggleGroup">
+            <button class="toggle-btn active" id="unifiedFormatBtn" title="Unified Diff View">
+              <i data-lucide="stretch-horizontal"></i> Unified
+            </button>
+            <button class="toggle-btn" id="splitFormatBtn" title="Split/Side-by-Side Diff View">
+              <i data-lucide="columns-2"></i> Split
+            </button>
+          </div>
+
+          <!-- Mode Toggle (Diff vs Blame) -->
+          <div class="toggle-group">
+            <button class="toggle-btn active" id="modeDiffBtn">
+              <i data-lucide="code"></i> Diff
+            </button>
+            <button class="toggle-btn" id="modeBlameBtn">
+              <i data-lucide="history"></i> Blame
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Main Viewer Area -->
+      <div class="viewer-body" id="viewerBody">
+        <!-- Default Empty State -->
+        <div class="empty-state" id="mainEmptyState">
+          <div class="empty-state-card">
+            <div class="empty-icon-container">
+              <i data-lucide="git-branch"></i>
+            </div>
+            <h3>Git Diff & Blame Studio</h3>
+            <p>Select a file from the sidebar to inspect detailed git modifications or view full code line history using Git Blame.</p>
+            <div class="empty-tips">
+              <div class="tip-item">
+                <i data-lucide="zap"></i>
+                <span>Comparing with <strong>Live State</strong> will automatically monitor file changes.</span>
+              </div>
+              <div class="tip-item">
+                <i data-lucide="eye"></i>
+                <span>Toggle between <strong>Unified</strong> and <strong>Split</strong> diff layouts.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Diff View Panel -->
+        <div class="diff-viewer-panel" id="diffViewerPanel" style="display: none;">
+          <!-- Loaded dynamically -->
+        </div>
+
+        <!-- Blame View Panel -->
+        <div class="blame-viewer-panel" id="blameViewerPanel" style="display: none;">
+          <!-- Loaded dynamically -->
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Toast Notification System -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Main JavaScript App -->
+  <script src="app.js"></script>
+  <script>
+    // Initialize Lucide Icons
+    lucide.createIcons();
+  </script>
+</body>
+</html>

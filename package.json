@@ -1,0 +1,14 @@
+{
+  "name": "diff-viewer",
+  "version": "1.0.0",
+  "description": "Git Diff & Blame Viewer",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "chokidar": "^3.6.0",
+    "express": "^4.19.2"
+  }
+}
