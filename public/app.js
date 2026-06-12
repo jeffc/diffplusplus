@@ -733,23 +733,48 @@ function renderDetailedBlame(blameData) {
     return;
   }
 
+  // Group consecutive lines from the same commit
+  const groups = [];
+  let currentGroup = null;
+
+  blameData.forEach(line => {
+    if (currentGroup && currentGroup.commit === line.commit) {
+      currentGroup.lines.push(line);
+    } else {
+      currentGroup = {
+        commit: line.commit,
+        author: line.author,
+        authorTime: line.authorTime,
+        summary: line.summary,
+        lines: [line]
+      };
+      groups.push(currentGroup);
+    }
+  });
+
   let html = '<div class="blame-table">';
   
-  blameData.forEach(line => {
-    const commitColor = getCommitColor(line.commit);
-    const dateStr = line.authorTime ? new Date(line.authorTime * 1000).toLocaleDateString() : '';
-    const tooltip = `${line.commit.substring(0, 8)} - ${line.author}\nDate: ${new Date(line.authorTime * 1000).toLocaleString()}\n\n${line.summary}`;
+  groups.forEach(group => {
+    const commitColor = getCommitColor(group.commit);
+    const dateStr = group.authorTime ? new Date(group.authorTime * 1000).toLocaleDateString() : '';
+    const tooltip = `${group.commit.substring(0, 8)} - ${group.author}\nDate: ${new Date(group.authorTime * 1000).toLocaleString()}\n\n${group.summary}`;
 
     html += `
-      <div class="blame-row">
+      <div class="blame-group">
         <div class="blame-meta" title="${escapeHtml(tooltip)}">
           <span class="blame-commit-accent" style="background-color: ${commitColor}"></span>
-          <span class="blame-commit">${line.commit.substring(0, 7)}</span>
-          <span class="blame-author">${line.author}</span>
+          <span class="blame-commit">${group.commit.substring(0, 7)}</span>
+          <span class="blame-author">${group.author}</span>
           <span class="blame-date">${dateStr}</span>
         </div>
-        <div class="blame-line-num">${line.resultLine}</div>
-        <div class="blame-code">${escapeHtml(line.content)}</div>
+        <div class="blame-lines">
+          ${group.lines.map(line => `
+            <div class="blame-line-row">
+              <div class="blame-line-num">${line.resultLine}</div>
+              <div class="blame-code">${escapeHtml(line.content)}</div>
+            </div>
+          `).join('')}
+        </div>
       </div>
     `;
   });
@@ -758,7 +783,27 @@ function renderDetailedBlame(blameData) {
   blameViewerPanel.innerHTML = html;
 }
 
-// Generate colored commits
+// Hand-curated high-contrast HSL colors for visually distinct commits in dark mode
+const DISTINCT_COLORS = [
+  'hsl(263, 75%, 52%)',  // Violet
+  'hsl(142, 65%, 45%)',  // Emerald Green
+  'hsl(36, 75%, 48%)',   // Amber/Orange
+  'hsl(200, 80%, 46%)',  // Sky Blue
+  'hsl(330, 70%, 50%)',  // Hot Pink
+  'hsl(170, 70%, 40%)',  // Dark Teal
+  'hsl(15, 80%, 48%)',   // Red-Orange
+  'hsl(280, 70%, 52%)',  // Purple-Magenta
+  'hsl(82, 65%, 44%)',   // Lime Green
+  'hsl(220, 75%, 52%)',  // Royal Blue
+  'hsl(48, 80%, 45%)',   // Yellow-Gold
+  'hsl(302, 60%, 48%)',  // Orchid
+  'hsl(190, 75%, 42%)',  // Cyan/Turquoise
+  'hsl(9, 70%, 48%)',    // Coral Red
+  'hsl(120, 55%, 42%)',  // Forest Green
+  'hsl(245, 70%, 58%)'   // Indigo Blue
+];
+
+// Generate colored commits from distinct palette
 function getCommitColor(commitHash) {
   if (commitHash === '0000000000000000000000000000000000000000' || commitHash.startsWith('0000000')) {
     return '#52525b'; // Zinc neutral for local changes
@@ -767,8 +812,8 @@ function getCommitColor(commitHash) {
   for (let i = 0; i < commitHash.length; i++) {
     hash = commitHash.charCodeAt(i) + ((hash << 5) - hash);
   }
-  const hue = Math.abs(hash % 360);
-  return `hsl(${hue}, 60%, 45%)`;
+  const index = Math.abs(hash) % DISTINCT_COLORS.length;
+  return DISTINCT_COLORS[index];
 }
 
 // ==========================================================================
