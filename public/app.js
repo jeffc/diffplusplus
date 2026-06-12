@@ -90,8 +90,14 @@ function initApp() {
     renderFilesList();
   });
 
-  // Load configuration from server
-  fetchConfig();
+  // Check URL parameters first, fallback to server config
+  const params = new URLSearchParams(window.location.search);
+  const urlRepoPath = params.get('repoPath');
+  if (urlRepoPath) {
+    loadRepoFromPath(urlRepoPath, true);
+  } else {
+    fetchConfig();
+  }
 }
 
 // ==========================================================================
@@ -109,7 +115,7 @@ async function fetchConfig() {
       
       updateRepoStatusUI();
       if (state.isRepo) {
-        await loadRepoData();
+        await loadRepoFromPath(data.repoPath, true);
       }
     }
   } catch (err) {
@@ -120,7 +126,10 @@ async function fetchConfig() {
 async function handleLoadRepo() {
   const pathVal = repoPathInput.value.trim();
   if (!pathVal) return;
+  await loadRepoFromPath(pathVal, false);
+}
 
+async function loadRepoFromPath(pathVal, initialLoad = false) {
   setLoading(true);
   try {
     const res = await fetch('/api/config', {
@@ -136,29 +145,34 @@ async function handleLoadRepo() {
 
     const data = await res.json();
     state.repoPath = data.repoPath;
+    repoPathInput.value = data.repoPath;
     state.isRepo = true;
     state.currentBranch = data.currentBranch;
     
-    // Reset comparisons
-    state.baseRef = data.currentBranch || 'HEAD';
-    state.targetRef = '__live__';
-    state.selectedFile = null;
-    state.expandedSummaryFiles.clear();
-
     updateRepoStatusUI();
-    showToast('Success', 'Repository loaded successfully', 'success');
-    await loadRepoData();
+    
+    if (!initialLoad) {
+      state.baseRef = data.currentBranch || 'HEAD';
+      state.targetRef = '__live__';
+      state.selectedFile = null;
+      state.expandedSummaryFiles.clear();
+      showToast('Success', 'Repository loaded successfully', 'success');
+      syncStateToUrl();
+    }
+
+    await loadRepoData(initialLoad);
   } catch (err) {
     state.isRepo = false;
     updateRepoStatusUI();
     showToast('Error', err.message, 'info');
     clearRepoData();
+    syncStateToUrl();
   } finally {
     setLoading(false);
   }
 }
 
-async function loadRepoData() {
+async function loadRepoData(initialLoad = false) {
   try {
     // 1. Fetch references (branches, tags, commits)
     const refsRes = await fetch('/api/refs');
@@ -168,11 +182,38 @@ async function loadRepoData() {
     state.commits = refsData.commits || [];
     state.tags = refsData.tags || [];
 
+    if (initialLoad) {
+      const params = new URLSearchParams(window.location.search);
+      const urlBase = params.get('base');
+      const urlTarget = params.get('target');
+      const urlLayout = params.get('layout');
+      const urlMode = params.get('mode');
+
+      if (urlBase) state.baseRef = urlBase;
+      else state.baseRef = state.currentBranch || 'HEAD';
+      
+      if (urlTarget) state.targetRef = urlTarget;
+      else state.targetRef = '__live__';
+      
+      if (urlLayout) state.diffLayout = urlLayout;
+      if (urlMode) state.viewMode = urlMode;
+
+      // Sync toggles in UI
+      if (urlLayout) {
+        unifiedFormatBtn.classList.toggle('active', state.diffLayout === 'unified');
+        splitFormatBtn.classList.toggle('active', state.diffLayout === 'split');
+      }
+      if (urlMode) {
+        modeDiffBtn.classList.toggle('active', state.viewMode === 'diff');
+        modeBlameBtn.classList.toggle('active', state.viewMode === 'blame');
+      }
+    }
+
     // Populate dropdowns
     populateDropdowns();
 
     // 2. Fetch diff list
-    await fetchDiffList();
+    await fetchDiffList(initialLoad);
 
     // 3. Setup watch if target is live
     setupFileWatch();
@@ -198,7 +239,7 @@ function clearRepoData() {
   stopFileWatch();
 }
 
-async function fetchDiffList() {
+async function fetchDiffList(initialLoad = false) {
   if (!state.isRepo) return;
 
   try {
@@ -209,19 +250,30 @@ async function fetchDiffList() {
     renderFilesList();
     updateStatsUI();
 
-    // If we have a selected file, re-load its diff or blame (e.g. after a file change)
-    if (state.selectedFile) {
-      // Check if selected file still exists in the diff list
+    if (initialLoad) {
+      const params = new URLSearchParams(window.location.search);
+      const urlFile = params.get('file');
+      if (urlFile) {
+        const file = state.files.find(f => f.path === urlFile);
+        if (file) {
+          selectFile(file, false);
+        } else {
+          // Allow opening files in Blame Mode even if not currently modified
+          selectFile({ path: urlFile, status: 'M', oldPath: null }, false);
+        }
+      }
+    } else if (state.selectedFile) {
       const stillExists = state.files.find(f => f.path === state.selectedFile.path);
       if (stillExists) {
         state.selectedFile = stillExists;
         loadDetailedContent();
-      } else {
-        // File is no longer modified (or was deleted/reverted)
+      } else if (state.viewMode !== 'blame') {
         hideDetailView();
         showToast('Info', 'Selected file has no differences anymore', 'info');
       }
     }
+
+    syncStateToUrl();
   } catch (err) {
     showToast('Error', 'Failed to retrieve changed files list', 'info');
   }
@@ -231,6 +283,7 @@ async function handleRefsChange() {
   state.expandedSummaryFiles.clear();
   setupFileWatch();
   await fetchDiffList();
+  syncStateToUrl();
 }
 
 // ==========================================================================
@@ -437,7 +490,7 @@ function getBadgeClass(status) {
 // ==========================================================================
 // Inline & Detailed View Handling
 // ==========================================================================
-function selectFile(file) {
+function selectFile(file, shouldSync = true) {
   state.selectedFile = file;
   
   // Update selection in list UI
@@ -466,6 +519,10 @@ function selectFile(file) {
   }
 
   loadDetailedContent();
+
+  if (shouldSync) {
+    syncStateToUrl();
+  }
 }
 
 function hideDetailView() {
@@ -474,6 +531,7 @@ function hideDetailView() {
   diffViewerPanel.style.display = 'none';
   blameViewerPanel.style.display = 'none';
   mainEmptyState.style.display = 'flex';
+  syncStateToUrl();
 }
 
 async function loadDetailedContent() {
@@ -879,6 +937,7 @@ function setDiffLayout(layout) {
   if (state.selectedFile && state.viewMode === 'diff') {
     loadDetailedContent();
   }
+  syncStateToUrl();
 }
 
 function setViewMode(mode) {
@@ -888,6 +947,7 @@ function setViewMode(mode) {
   if (state.selectedFile) {
     loadDetailedContent();
   }
+  syncStateToUrl();
 }
 
 // ==========================================================================
@@ -1010,4 +1070,17 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+function syncStateToUrl() {
+  if (!state.repoPath) return;
+  const url = new URL(window.location);
+  url.searchParams.set('repoPath', state.repoPath);
+  url.searchParams.set('base', state.baseRef || '');
+  url.searchParams.set('target', state.targetRef || '');
+  url.searchParams.set('file', state.selectedFile ? state.selectedFile.path : '');
+  url.searchParams.set('mode', state.viewMode || '');
+  url.searchParams.set('layout', state.diffLayout || '');
+  
+  window.history.replaceState({}, '', url.pathname + url.search);
 }
