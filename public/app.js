@@ -545,12 +545,20 @@ function populateDropdowns() {
 }
 
 function updateStatsUI() {
-  const changedCount = state.files.filter(f => f.status !== 'unchanged' || f.isUntracked).length;
+  const nonIgnoredFiles = state.files.filter(f => !f.isIgnored);
+  const changedCount = nonIgnoredFiles.filter(f => f.status !== 'unchanged' || f.isUntracked).length;
+  const untrackedCount = nonIgnoredFiles.filter(f => f.isUntracked).length;
+
   if (changedCount === 0) {
     sidebarStats.innerText = 'No files changed';
     return;
   }
-  sidebarStats.innerText = `${changedCount} file${changedCount > 1 ? 's' : ''} changed`;
+
+  let statsText = `${changedCount} file${changedCount > 1 ? 's' : ''} changed`;
+  if (untrackedCount > 0) {
+    statsText += ` (${untrackedCount} untracked)`;
+  }
+  sidebarStats.innerText = statsText;
 }
 
 function renderFilesList() {
@@ -633,9 +641,11 @@ function selectFile(file, shouldSync = true) {
   if (file.isUntracked) {
     detailFileBadge.className = 'file-status-badge badge-untracked';
     detailFileBadge.innerText = 'UNTRACKED';
+    detailFileBadge.title = 'Untracked';
   } else {
     detailFileBadge.className = `file-status-badge ${getBadgeClass(file.status)}`;
     detailFileBadge.innerText = file.status === 'R' ? 'RENAMED' : file.status === 'A' ? 'ADDED' : file.status === 'D' ? 'DELETED' : 'MODIFIED';
+    detailFileBadge.title = file.status === 'R' ? 'Renamed' : file.status === 'A' ? 'Added' : file.status === 'D' ? 'Deleted' : 'Modified';
   }
   detailFilePath.innerText = file.path;
   
@@ -777,25 +787,27 @@ function renderDetailedDiff(diffData) {
   }
 
   if (state.diffLayout === 'unified') {
-    renderUnifiedDiff(diffData, diffViewerPanel);
+    renderUnifiedDiff(diffData, diffViewerPanel, state.fullContext);
   } else {
-    renderSplitDiff(diffData, diffViewerPanel);
+    renderSplitDiff(diffData, diffViewerPanel, state.fullContext);
   }
 }
 
-function renderUnifiedDiff(diffData, targetElement) {
+function renderUnifiedDiff(diffData, targetElement, hideHunkHeaders = false) {
   let html = '<table class="diff-table">';
   
   diffData.hunks.forEach(hunk => {
     // Render Hunk header
-    html += `
-      <tr class="diff-row row-hunk">
-        <td class="diff-gutter">...</td>
-        <td class="diff-gutter">...</td>
-        <td class="diff-marker"> </td>
-        <td class="diff-code">${escapeHtml(hunk.header)}</td>
-      </tr>
-    `;
+    if (!hideHunkHeaders) {
+      html += `
+        <tr class="diff-row row-hunk">
+          <td class="diff-gutter">...</td>
+          <td class="diff-gutter">...</td>
+          <td class="diff-marker"> </td>
+          <td class="diff-code">${escapeHtml(hunk.header)}</td>
+        </tr>
+      `;
+    }
 
     // Render lines
     hunk.lines.forEach(line => {
@@ -819,16 +831,18 @@ function renderUnifiedDiff(diffData, targetElement) {
   targetElement.innerHTML = html;
 }
 
-function renderSplitDiff(diffData, targetElement) {
+function renderSplitDiff(diffData, targetElement, hideHunkHeaders = false) {
   let html = '<table class="split-diff-table">';
 
   diffData.hunks.forEach(hunk => {
     // Hunk Header (Spans full width)
-    html += `
-      <tr class="split-diff-row row-hunk">
-        <td colspan="2" class="diff-code" style="padding-left: 12px; border-right: none;">${escapeHtml(hunk.header)}</td>
-      </tr>
-    `;
+    if (!hideHunkHeaders) {
+      html += `
+        <tr class="split-diff-row row-hunk">
+          <td colspan="2" class="diff-code" style="padding-left: 12px; border-right: none;">${escapeHtml(hunk.header)}</td>
+        </tr>
+      `;
+    }
 
     // Align lines within the hunk
     const alignedRows = alignHunkLines(hunk.lines);
@@ -1349,11 +1363,12 @@ function renderFileTreeHTML(node, depth = 0) {
 
     let badgeHtml = '';
     if (isChanged) {
-      badgeHtml = `<span class="file-badge ${getBadgeClass(file.status)}">${file.status}</span>`;
+      const titleText = file.status === 'R' ? 'Renamed' : file.status === 'A' ? 'Added' : file.status === 'D' ? 'Deleted' : 'Modified';
+      badgeHtml = `<span class="file-badge ${getBadgeClass(file.status)}" title="${titleText}">${file.status}</span>`;
     } else if (isUntracked) {
-      badgeHtml = `<span class="file-badge badge-untracked">?</span>`;
+      badgeHtml = `<span class="file-badge badge-untracked" title="Untracked">?</span>`;
     } else if (isIgnored) {
-      badgeHtml = `<span class="file-badge badge-ignored">I</span>`;
+      badgeHtml = `<span class="file-badge badge-ignored" title="Ignored">I</span>`;
     }
 
     let inlineDiffHtml = '';
