@@ -966,6 +966,7 @@ function setupFileWatch() {
   // Open EventSource
   const url = `/api/watch`;
   state.sseSource = new EventSource(url);
+  const connectionTime = Date.now();
 
   watchIndicator.classList.add('active');
 
@@ -976,16 +977,21 @@ function setupFileWatch() {
         // Trigger auto-refresh of file list & detailed view
         fetchDiffList();
         
-        // Flash modified file item in sidebar if it's rendered
-        setTimeout(() => {
-          const fileWrapper = document.getElementById(`file-wrapper-${data.path.replace(/[^a-zA-Z0-9]/g, '_')}`);
-          if (fileWrapper) {
-            fileWrapper.classList.add('pulse-highlight');
-            setTimeout(() => fileWrapper.classList.remove('pulse-highlight'), 1500);
-          }
-        }, 300);
+        // Suppress notification toasts and highlights that trigger within 2.5s of watcher connection
+        const isInitialEvent = (Date.now() - connectionTime) < 2500;
 
-        showToast('File Changed', `${data.path} has been updated. Auto-refreshed!`, 'success');
+        if (!isInitialEvent) {
+          // Flash modified file item in sidebar if it's rendered
+          setTimeout(() => {
+            const fileWrapper = document.getElementById(`file-wrapper-${data.path.replace(/[^a-zA-Z0-9]/g, '_')}`);
+            if (fileWrapper) {
+              fileWrapper.classList.add('pulse-highlight');
+              setTimeout(() => fileWrapper.classList.remove('pulse-highlight'), 1500);
+            }
+          }, 300);
+
+          showToast('File Changed', `${data.path} has been updated. Auto-refreshed!`, 'success');
+        }
       }
     } catch (e) {
       // Ignore parse errors
