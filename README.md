@@ -12,6 +12,7 @@ A sleek, premium local web application designed to show per-file diffs and detai
 - **Dual Diff Formats**: Toggle between a **Unified** (single-column inline) diff and a premium **Split** (side-by-side) diff.
 - **Git Blame Mode**: Hides diff annotations to show a line-by-line file blame. Groups consecutive lines written in the same commit to span a single metadata block. Commits are mapped to a hand-curated palette of 16 highly distinct, premium HSL colors for clear visual separation, with full commit details available on hover.
 - **Inline Expandable Summary**: View changes directly in the sidebar file list by expanding a file card, or open it in the main workspace for full detailed editing context.
+- **URL State Tracking**: Synchronizes state variables (`repoPath`, `base`, `target`, `file`, `mode`, `layout`) dynamically with the browser's URL search parameters, preserving the exact workspace layout and selection across page refreshes.
 - **Studio Aesthetics**: Premium dark theme powered by a custom CSS variables design system, glassmorphic header blur, smooth transitions, and pulse animations.
 
 ---
