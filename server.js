@@ -471,12 +471,12 @@ app.get('/api/blame', async (req, res) => {
 
       if (currentLine === null) {
         const parts = line.split(' ');
-        if (parts.length >= 4) {
+        if (parts.length >= 3 && parts[0].length === 40) {
           currentLine = {
             commit: parts[0],
             sourceLine: parseInt(parts[1]),
             resultLine: parseInt(parts[2]),
-            groupCount: parseInt(parts[3]),
+            groupCount: parts[3] ? parseInt(parts[3]) : 1,
             author: '',
             authorTime: 0,
             summary: '',
@@ -541,7 +541,8 @@ app.get('/api/watch', (req, res) => {
       '**/node_modules/**',      // node_modules
     ],
     persistent: true,
-    ignoreInitial: true
+    ignoreInitial: true,
+    followSymlinks: false
   });
 
   const sendFileChange = async (event, filePath) => {
