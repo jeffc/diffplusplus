@@ -38,9 +38,15 @@
       <div class="compare-controls">
         <div class="select-wrapper">
           <label for="baseRefSelect">Base</label>
-          <select id="baseRefSelect" disabled>
-            <option value="">Select Base Ref</option>
-          </select>
+          <div class="select-input-group">
+            <select id="baseRefSelect" disabled>
+              <option value="">Select Base Ref</option>
+            </select>
+            <input type="text" id="baseRefCustomInput" placeholder="e.g. main, HEAD~1" class="custom-ref-input" style="display: none;" />
+            <button id="baseRefResetBtn" class="btn-reset" style="display: none;" title="Select from list">
+              <i data-lucide="list"></i>
+            </button>
+          </div>
         </div>
 
         <div class="compare-arrow">
@@ -49,9 +55,15 @@
 
         <div class="select-wrapper">
           <label for="targetRefSelect">Target</label>
-          <select id="targetRefSelect" disabled>
-            <option value="">Select Target Ref</option>
-          </select>
+          <div class="select-input-group">
+            <select id="targetRefSelect" disabled>
+              <option value="">Select Target Ref</option>
+            </select>
+            <input type="text" id="targetRefCustomInput" placeholder="e.g. dev, HEAD" class="custom-ref-input" style="display: none;" />
+            <button id="targetRefResetBtn" class="btn-reset" style="display: none;" title="Select from list">
+              <i data-lucide="list"></i>
+            </button>
+          </div>
         </div>
       </div>
 

@@ -31,7 +31,13 @@ const loadRepoBtn = document.getElementById('loadRepoBtn');
 const repoStatusBadge = document.getElementById('repoStatusBadge');
 
 const baseRefSelect = document.getElementById('baseRefSelect');
+const baseRefCustomInput = document.getElementById('baseRefCustomInput');
+const baseRefResetBtn = document.getElementById('baseRefResetBtn');
+
 const targetRefSelect = document.getElementById('targetRefSelect');
+const targetRefCustomInput = document.getElementById('targetRefCustomInput');
+const targetRefResetBtn = document.getElementById('targetRefResetBtn');
+
 const watchIndicator = document.getElementById('watchIndicator');
 
 const fileSearchInput = document.getElementById('fileSearchInput');
@@ -70,11 +76,86 @@ function initApp() {
 
   // Ref selection listeners
   baseRefSelect.addEventListener('change', (e) => {
-    state.baseRef = e.target.value;
+    if (e.target.value === '__custom__') {
+      baseRefSelect.style.display = 'none';
+      baseRefCustomInput.style.display = 'block';
+      baseRefResetBtn.style.display = 'block';
+      baseRefCustomInput.value = state.baseRef !== 'HEAD' && !state.branches.includes(state.baseRef) ? state.baseRef : '';
+      baseRefCustomInput.focus();
+    } else {
+      state.baseRef = e.target.value;
+      handleRefsChange();
+    }
+  });
+
+  baseRefCustomInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      const val = baseRefCustomInput.value.trim();
+      if (val && val !== state.baseRef) {
+        state.baseRef = val;
+        handleRefsChange();
+      }
+      baseRefCustomInput.blur();
+    }
+  });
+
+  baseRefCustomInput.addEventListener('blur', () => {
+    const val = baseRefCustomInput.value.trim();
+    if (val && val !== state.baseRef) {
+      state.baseRef = val;
+      handleRefsChange();
+    }
+  });
+
+  baseRefResetBtn.addEventListener('click', () => {
+    baseRefSelect.style.display = 'block';
+    baseRefCustomInput.style.display = 'none';
+    baseRefResetBtn.style.display = 'none';
+    
+    baseRefSelect.value = 'HEAD';
+    state.baseRef = 'HEAD';
     handleRefsChange();
   });
+
   targetRefSelect.addEventListener('change', (e) => {
-    state.targetRef = e.target.value;
+    if (e.target.value === '__custom__') {
+      targetRefSelect.style.display = 'none';
+      targetRefCustomInput.style.display = 'block';
+      targetRefResetBtn.style.display = 'block';
+      targetRefCustomInput.value = state.targetRef !== '__live__' && state.targetRef !== 'HEAD' && !state.branches.includes(state.targetRef) ? state.targetRef : '';
+      targetRefCustomInput.focus();
+    } else {
+      state.targetRef = e.target.value;
+      handleRefsChange();
+    }
+  });
+
+  targetRefCustomInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      const val = targetRefCustomInput.value.trim();
+      if (val && val !== state.targetRef) {
+        state.targetRef = val;
+        handleRefsChange();
+      }
+      targetRefCustomInput.blur();
+    }
+  });
+
+  targetRefCustomInput.addEventListener('blur', () => {
+    const val = targetRefCustomInput.value.trim();
+    if (val && val !== state.targetRef) {
+      state.targetRef = val;
+      handleRefsChange();
+    }
+  });
+
+  targetRefResetBtn.addEventListener('click', () => {
+    targetRefSelect.style.display = 'block';
+    targetRefCustomInput.style.display = 'none';
+    targetRefResetBtn.style.display = 'none';
+    
+    targetRefSelect.value = '__live__';
+    state.targetRef = '__live__';
     handleRefsChange();
   });
 
@@ -152,7 +233,7 @@ async function loadRepoFromPath(pathVal, initialLoad = false) {
     updateRepoStatusUI();
     
     if (!initialLoad) {
-      state.baseRef = data.currentBranch || 'HEAD';
+      state.baseRef = 'HEAD';
       state.targetRef = '__live__';
       state.selectedFile = null;
       state.expandedSummaryFiles.clear();
@@ -301,11 +382,35 @@ function updateRepoStatusUI() {
 }
 
 function populateDropdowns() {
-  // Populate Base Select
-  let baseHtml = '';
-  
+  // Collect all valid values for baseRef select
+  const baseValidValues = new Set(['HEAD']);
+  state.branches.forEach(b => baseValidValues.add(b));
+  state.tags.forEach(t => baseValidValues.add(t));
+  state.commits.forEach(c => {
+    baseValidValues.add(c.hash);
+    baseValidValues.add(c.shortHash);
+  });
+
+  // Collect all valid values for targetRef select
+  const targetValidValues = new Set(['__live__', 'HEAD']);
+  state.branches.forEach(b => targetValidValues.add(b));
+  state.tags.forEach(t => targetValidValues.add(t));
+  state.commits.forEach(c => {
+    targetValidValues.add(c.hash);
+    targetValidValues.add(c.shortHash);
+  });
+
+  // Check if current values are custom
+  const isBaseCustom = !baseValidValues.has(state.baseRef);
+  const isTargetCustom = !targetValidValues.has(state.targetRef);
+
+  // 1. Populate Base Select
+  let baseHtml = `<optgroup label="Special Refs">
+    <option value="HEAD" ${state.baseRef === 'HEAD' ? 'selected' : ''}>HEAD</option>
+  </optgroup>`;
+
   if (state.branches.length > 0) {
-    baseHtml += '<optgroup label="Branches">';
+    baseHtml += '<optgroup label="Local Branches">';
     state.branches.forEach(b => {
       const selected = b === state.baseRef ? 'selected' : '';
       baseHtml += `<option value="${b}" ${selected}>${b}</option>`;
@@ -323,7 +428,7 @@ function populateDropdowns() {
   }
 
   if (state.commits.length > 0) {
-    baseHtml += '<optgroup label="Commits">';
+    baseHtml += '<optgroup label="Commits (Last 10)">';
     state.commits.forEach(c => {
       const selected = c.hash === state.baseRef || c.shortHash === state.baseRef ? 'selected' : '';
       const text = `${c.shortHash} by ${c.author} - ${c.subject}`;
@@ -332,14 +437,33 @@ function populateDropdowns() {
     baseHtml += '</optgroup>';
   }
 
+  baseHtml += `<optgroup label="Other">
+    <option value="__custom__" ${isBaseCustom ? 'selected' : ''}>Custom Ref...</option>
+  </optgroup>`;
+
   baseRefSelect.innerHTML = baseHtml;
   baseRefSelect.disabled = false;
 
-  // Populate Target Select (includes Live option)
-  let targetHtml = `<option value="__live__" ${state.targetRef === '__live__' ? 'selected' : ''}>Live (Working Tree)</option>`;
+  // Sync Base UI layout
+  if (isBaseCustom) {
+    baseRefSelect.style.display = 'none';
+    baseRefCustomInput.style.display = 'block';
+    baseRefResetBtn.style.display = 'block';
+    baseRefCustomInput.value = state.baseRef;
+  } else {
+    baseRefSelect.style.display = 'block';
+    baseRefCustomInput.style.display = 'none';
+    baseRefResetBtn.style.display = 'none';
+  }
+
+  // 2. Populate Target Select
+  let targetHtml = `<optgroup label="Special Refs">
+    <option value="__live__" ${state.targetRef === '__live__' ? 'selected' : ''}>Live (Working Tree)</option>
+    <option value="HEAD" ${state.targetRef === 'HEAD' ? 'selected' : ''}>HEAD</option>
+  </optgroup>`;
 
   if (state.branches.length > 0) {
-    targetHtml += '<optgroup label="Branches">';
+    targetHtml += '<optgroup label="Local Branches">';
     state.branches.forEach(b => {
       const selected = b === state.targetRef ? 'selected' : '';
       targetHtml += `<option value="${b}" ${selected}>${b}</option>`;
@@ -357,7 +481,7 @@ function populateDropdowns() {
   }
 
   if (state.commits.length > 0) {
-    targetHtml += '<optgroup label="Commits">';
+    targetHtml += '<optgroup label="Commits (Last 10)">';
     state.commits.forEach(c => {
       const selected = c.hash === state.targetRef || c.shortHash === state.targetRef ? 'selected' : '';
       const text = `${c.shortHash} by ${c.author} - ${c.subject}`;
@@ -366,8 +490,24 @@ function populateDropdowns() {
     targetHtml += '</optgroup>';
   }
 
+  targetHtml += `<optgroup label="Other">
+    <option value="__custom__" ${isTargetCustom ? 'selected' : ''}>Custom Ref...</option>
+  </optgroup>`;
+
   targetRefSelect.innerHTML = targetHtml;
   targetRefSelect.disabled = false;
+
+  // Sync Target UI layout
+  if (isTargetCustom) {
+    targetRefSelect.style.display = 'none';
+    targetRefCustomInput.style.display = 'block';
+    targetRefResetBtn.style.display = 'block';
+    targetRefCustomInput.value = state.targetRef;
+  } else {
+    targetRefSelect.style.display = 'block';
+    targetRefCustomInput.style.display = 'none';
+    targetRefResetBtn.style.display = 'none';
+  }
 }
 
 function updateStatsUI() {

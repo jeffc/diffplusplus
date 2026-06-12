@@ -98,24 +98,20 @@ app.get('/api/refs', async (req, res) => {
   }
 
   try {
-    // Get all branches (local and remote)
-    const branchesOutput = await runGit(['branch', '-a', '--format=%(refname:short)'], currentRepoPath);
-    const branches = Array.from(
-      new Set(
-        branchesOutput
-          .split('\n')
-          .map(b => b.trim())
-          .filter(b => b && !b.startsWith('origin/HEAD'))
-      )
-    );
+    // Get local branches only
+    const branchesOutput = await runGit(['branch', '--format=%(refname:short)'], currentRepoPath);
+    const branches = branchesOutput
+      .split('\n')
+      .map(b => b.trim())
+      .filter(b => b && !b.startsWith('HEAD'));
 
     // Get tags
     const tagsOutput = await runGit(['tag'], currentRepoPath);
     const tags = tagsOutput.split('\n').map(t => t.trim()).filter(Boolean);
 
-    // Get last 100 commits
+    // Get last 10 commits
     const commitsOutput = await runGit(
-      ['log', '-n', '100', '--format=%H|%h|%an|%at|%s'],
+      ['log', '-n', '10', '--format=%H|%h|%an|%at|%s'],
       currentRepoPath
     );
     const commits = commitsOutput
