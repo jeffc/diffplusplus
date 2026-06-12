@@ -546,15 +546,15 @@ function populateDropdowns() {
 
 function updateStatsUI() {
   const nonIgnoredFiles = state.files.filter(f => !f.isIgnored);
-  const changedCount = nonIgnoredFiles.filter(f => f.status !== 'unchanged' || f.isUntracked).length;
+  const changedCount = nonIgnoredFiles.filter(f => f.status !== 'unchanged' && !f.isUntracked).length;
   const untrackedCount = nonIgnoredFiles.filter(f => f.isUntracked).length;
 
-  if (changedCount === 0) {
+  if (changedCount === 0 && untrackedCount === 0) {
     sidebarStats.innerText = 'No files changed';
     return;
   }
 
-  let statsText = `${changedCount} file${changedCount > 1 ? 's' : ''} changed`;
+  let statsText = `${changedCount} file${changedCount === 1 ? '' : 's'} changed`;
   if (untrackedCount > 0) {
     statsText += ` (${untrackedCount} untracked)`;
   }
