@@ -647,6 +647,7 @@ function getBadgeClass(status) {
     case 'A': return 'badge-added';
     case 'D': return 'badge-deleted';
     case 'R': return 'badge-renamed';
+    case 'unchanged': return 'badge-unchanged';
     default: return 'badge-modified';
   }
 }
@@ -654,8 +655,22 @@ function getBadgeClass(status) {
 // ==========================================================================
 // Inline & Detailed View Handling
 // ==========================================================================
+function expandParentFolders(filePath) {
+  if (!filePath) return;
+  const parts = filePath.split('/');
+  let currentPath = '';
+  for (let i = 0; i < parts.length - 1; i++) {
+    currentPath = currentPath ? `${currentPath}/${parts[i]}` : parts[i];
+    state.expandedFolders.add(currentPath);
+  }
+}
+
 function selectFile(file, shouldSync = true) {
   state.selectedFile = file;
+  
+  // Expand parent directories in sidebar tree
+  expandParentFolders(file.path);
+  renderFilesList();
   
   // Update selection in list UI
   const items = filesListContainer.querySelectorAll('.tree-file-row');
@@ -675,6 +690,10 @@ function selectFile(file, shouldSync = true) {
     detailFileBadge.className = 'file-status-badge badge-untracked';
     detailFileBadge.innerText = 'UNTRACKED';
     detailFileBadge.title = 'Untracked';
+  } else if (file.status === 'unchanged') {
+    detailFileBadge.className = 'file-status-badge badge-unchanged';
+    detailFileBadge.innerText = 'UNCHANGED';
+    detailFileBadge.title = 'Unchanged';
   } else {
     detailFileBadge.className = `file-status-badge ${getBadgeClass(file.status)}`;
     detailFileBadge.innerText = file.status === 'R' ? 'RENAMED' : file.status === 'A' ? 'ADDED' : file.status === 'D' ? 'DELETED' : 'MODIFIED';

@@ -707,6 +707,12 @@ body {
   border: 1px solid rgba(82, 82, 91, 0.15);
 }
 
+.badge-unchanged {
+  background-color: rgba(161, 161, 170, 0.08);
+  color: var(--text-muted);
+  border: 1px solid rgba(161, 161, 170, 0.15);
+}
+
 /* Files List */
 .files-list {
   flex: 1;
