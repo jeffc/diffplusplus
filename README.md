@@ -45,19 +45,44 @@ A sleek, premium local web application designed to show per-file diffs and detai
 Make sure you have the following installed on your machine:
 - **Node.js** (v14 or higher recommended)
 - **Git** CLI (installed and available in your system's PATH)
+- Or **Docker** (if running via container)
 
-### 1. Install Dependencies
+### Local Setup
+
+#### 1. Install Dependencies
 Clone or download the project and run the following command in the project directory:
 ```bash
 npm install
 ```
 
-### 2. Start the Server
+#### 2. Start the Server
 Run the startup script:
 ```bash
 npm start
 ```
 The application will boot up at **`http://localhost:3000`**. Open this URL in your web browser.
+
+---
+
+### Docker Setup (Alternative)
+
+You can run the application containerized. This is useful to avoid installing Node.js locally.
+
+#### 1. Build the Docker Image
+In the project directory, run:
+```bash
+docker build -t diff-viewer .
+```
+
+#### 2. Start the Container
+Start the container and mount the local Git repository you want to inspect. Map port `3000` and mount your repository directory to `/repo` inside the container:
+```bash
+docker run -d --name diff-viewer -p 3000:3000 -v /path/to/your/local/git-repo:/repo diff-viewer
+```
+
+#### 3. Access the Application
+Open your web browser and navigate to **`http://localhost:3000`**. In the repository loader input box, type `/repo` and press **Enter** to inspect the mounted repository.
+
 
 ---
 
