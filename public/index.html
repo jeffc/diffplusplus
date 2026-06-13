@@ -13,6 +13,8 @@
   <!-- Highlight.js Stylesheet & Script -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/tokyo-night-dark.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <!-- Marked for Markdown Parsing -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.1/marked.min.js"></script>
   <!-- Lucide Icons for clean symbols -->
   <script src="https://unpkg.com/lucide@latest"></script>
 </head>
@@ -135,13 +137,16 @@
             </button>
           </div>
 
-          <!-- Mode Toggle (Diff vs Blame) -->
+          <!-- Mode Toggle (Diff vs Blame vs Render) -->
           <div class="toggle-group">
             <button class="toggle-btn active" id="modeDiffBtn">
               <i data-lucide="code"></i> Diff
             </button>
             <button class="toggle-btn" id="modeBlameBtn">
               <i data-lucide="history"></i> Blame
+            </button>
+            <button class="toggle-btn" id="modeRenderBtn">
+              <i data-lucide="eye"></i> Render
             </button>
           </div>
         </div>
@@ -177,6 +182,11 @@
 
         <!-- Blame View Panel -->
         <div class="blame-viewer-panel" id="blameViewerPanel" style="display: none;">
+          <!-- Loaded dynamically -->
+        </div>
+
+        <!-- Render View Panel -->
+        <div class="render-viewer-panel" id="renderViewerPanel" style="display: none;">
           <!-- Loaded dynamically -->
         </div>
       </div>

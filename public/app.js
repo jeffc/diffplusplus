@@ -61,10 +61,12 @@ const fullContextBtn = document.getElementById('fullContextBtn');
 const fullContextToggleGroup = document.getElementById('fullContextToggleGroup');
 const modeDiffBtn = document.getElementById('modeDiffBtn');
 const modeBlameBtn = document.getElementById('modeBlameBtn');
+const modeRenderBtn = document.getElementById('modeRenderBtn');
 
 const mainEmptyState = document.getElementById('mainEmptyState');
 const diffViewerPanel = document.getElementById('diffViewerPanel');
 const blameViewerPanel = document.getElementById('blameViewerPanel');
+const renderViewerPanel = document.getElementById('renderViewerPanel');
 const toastContainer = document.getElementById('toastContainer');
 
 // ==========================================================================
@@ -172,6 +174,7 @@ function initApp() {
   fullContextBtn.addEventListener('click', toggleFullContext);
   modeDiffBtn.addEventListener('click', () => setViewMode('diff'));
   modeBlameBtn.addEventListener('click', () => setViewMode('blame'));
+  modeRenderBtn.addEventListener('click', () => setViewMode('render'));
 
   // File search
   fileSearchInput.addEventListener('input', (e) => {
@@ -311,6 +314,7 @@ async function loadRepoData(initialLoad = false) {
       if (urlMode) {
         modeDiffBtn.classList.toggle('active', state.viewMode === 'diff');
         modeBlameBtn.classList.toggle('active', state.viewMode === 'blame');
+        modeRenderBtn.classList.toggle('active', state.viewMode === 'render');
       }
       if (fullContextBtn) {
         fullContextBtn.classList.toggle('active', state.fullContext === true);
@@ -668,6 +672,7 @@ function hideDetailView() {
   detailHeader.style.display = 'none';
   diffViewerPanel.style.display = 'none';
   blameViewerPanel.style.display = 'none';
+  renderViewerPanel.style.display = 'none';
   mainEmptyState.style.display = 'flex';
   syncStateToUrl();
 }
@@ -678,6 +683,7 @@ async function loadDetailedContent() {
   if (state.viewMode === 'diff') {
     diffViewerPanel.style.display = 'block';
     blameViewerPanel.style.display = 'none';
+    renderViewerPanel.style.display = 'none';
     diffFormatToggleGroup.style.visibility = 'visible';
     if (fullContextToggleGroup) {
       fullContextToggleGroup.style.display = 'flex';
@@ -708,10 +714,10 @@ async function loadDetailedContent() {
       diffViewerPanel.innerHTML = `<div class="loader-container" style="color: var(--status-del)"><i data-lucide="circle-alert"></i> Failed to retrieve file diff: ${err.message}</div>`;
       lucide.createIcons();
     }
-  } else {
-    // Blame mode
+  } else if (state.viewMode === 'blame') {
     diffViewerPanel.style.display = 'none';
     blameViewerPanel.style.display = 'block';
+    renderViewerPanel.style.display = 'none';
     diffFormatToggleGroup.style.visibility = 'hidden';
     if (fullContextToggleGroup) {
       fullContextToggleGroup.style.display = 'none';
@@ -729,6 +735,16 @@ async function loadDetailedContent() {
       blameViewerPanel.innerHTML = `<div class="loader-container" style="color: var(--status-del)"><i data-lucide="circle-alert"></i> Failed to retrieve blame data: ${err.message}</div>`;
       lucide.createIcons();
     }
+  } else if (state.viewMode === 'render') {
+    diffViewerPanel.style.display = 'none';
+    blameViewerPanel.style.display = 'none';
+    renderViewerPanel.style.display = 'block';
+    diffFormatToggleGroup.style.visibility = 'hidden';
+    if (fullContextToggleGroup) {
+      fullContextToggleGroup.style.display = 'none';
+    }
+    
+    renderDetailedContent();
   }
 }
 
@@ -1023,6 +1039,96 @@ function renderDetailedBlame(blameData) {
   blameViewerPanel.innerHTML = html;
 }
 
+async function renderDetailedContent() {
+  const filePath = state.selectedFile.path;
+  const target = state.targetRef;
+  const ext = filePath.split('.').pop().toLowerCase();
+  const rawUrl = `/api/file-raw?ref=${encodeURIComponent(target)}&path=${encodeURIComponent(filePath)}`;
+
+  // Images
+  const imageExtensions = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'ico'];
+  
+  if (imageExtensions.includes(ext)) {
+    renderViewerPanel.innerHTML = `
+      <div class="rendered-image-container">
+        <img src="${rawUrl}" alt="${escapeHtml(filePath)}" class="rendered-image" />
+      </div>
+    `;
+    return;
+  }
+
+  // PDF
+  if (ext === 'pdf') {
+    renderViewerPanel.innerHTML = `
+      <div class="rendered-pdf-container">
+        <iframe src="${rawUrl}" class="rendered-pdf-iframe"></iframe>
+      </div>
+    `;
+    return;
+  }
+
+  // HTML
+  if (ext === 'html' || ext === 'htm') {
+    renderViewerPanel.innerHTML = `
+      <div class="rendered-html-container">
+        <iframe src="${rawUrl}" class="rendered-html-iframe"></iframe>
+      </div>
+    `;
+    return;
+  }
+
+  // Markdown
+  if (ext === 'md' || ext === 'markdown') {
+    renderViewerPanel.innerHTML = '<div class="loader-container"><div class="spinner"></div><div>Parsing Markdown...</div></div>';
+    try {
+      const res = await fetch(rawUrl);
+      if (!res.ok) throw new Error('Failed to load raw markdown content');
+      const text = await res.text();
+      
+      let htmlContent = '';
+      if (window.marked && window.marked.parse) {
+        htmlContent = marked.parse(text);
+      } else {
+        htmlContent = `<pre class="plaintext-render">${escapeHtml(text)}</pre>`;
+      }
+      
+      renderViewerPanel.innerHTML = `
+        <div class="rendered-markdown-body markdown-body">
+          ${htmlContent}
+        </div>
+      `;
+    } catch (err) {
+      renderViewerPanel.innerHTML = `<div class="loader-container" style="color: var(--status-del)"><i data-lucide="circle-alert"></i> Failed to render Markdown: ${err.message}</div>`;
+      lucide.createIcons();
+    }
+    return;
+  }
+
+  // Default fallback (e.g. text/code files)
+  renderViewerPanel.innerHTML = '<div class="loader-container"><div class="spinner"></div><div>Loading text...</div></div>';
+  try {
+    const res = await fetch(rawUrl);
+    if (!res.ok) throw new Error('Failed to load file contents');
+    const text = await res.text();
+    
+    const highlighted = highlightCodeLine(text, filePath);
+    
+    renderViewerPanel.innerHTML = `
+      <div class="rendered-fallback-container">
+        <div class="rendered-fallback-info">
+          <i data-lucide="info"></i>
+          <span>Interactive render mode not supported for this file type. Showing as source code.</span>
+        </div>
+        <pre class="rendered-code-pre"><code class="hljs">${highlighted}</code></pre>
+      </div>
+    `;
+    lucide.createIcons();
+  } catch (err) {
+    renderViewerPanel.innerHTML = `<div class="loader-container" style="color: var(--status-del)"><i data-lucide="circle-alert"></i> Failed to retrieve content: ${err.message}</div>`;
+    lucide.createIcons();
+  }
+}
+
 // Hand-curated high-contrast HSL colors for visually distinct commits in dark mode
 const DISTINCT_COLORS = [
   'hsl(263, 75%, 52%)',  // Violet
@@ -1156,6 +1262,7 @@ function setViewMode(mode) {
   state.viewMode = mode;
   modeDiffBtn.classList.toggle('active', mode === 'diff');
   modeBlameBtn.classList.toggle('active', mode === 'blame');
+  modeRenderBtn.classList.toggle('active', mode === 'render');
   if (fullContextToggleGroup) {
     fullContextToggleGroup.style.display = mode === 'diff' ? 'flex' : 'none';
   }

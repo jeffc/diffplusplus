@@ -495,6 +495,51 @@ app.get('/api/file-diff', async (req, res) => {
   }
 });
 
+// 4.5 Raw File Serving Endpoint (for images, PDFs, raw markdown/html)
+app.get('/api/file-raw', async (req, res) => {
+  const { ref, path: filePath } = req.query;
+  if (!currentRepoPath) {
+    return res.status(400).json({ error: 'No repository configured' });
+  }
+  if (!filePath) {
+    return res.status(400).json({ error: 'path parameter is required' });
+  }
+
+  try {
+    const fullPath = path.join(currentRepoPath, filePath);
+    
+    // Determine content type
+    const ext = path.extname(filePath).toLowerCase();
+    let contentType = 'application/octet-stream';
+    if (ext === '.pdf') contentType = 'application/pdf';
+    else if (ext === '.png') contentType = 'image/png';
+    else if (ext === '.jpg' || ext === '.jpeg') contentType = 'image/jpeg';
+    else if (ext === '.gif') contentType = 'image/gif';
+    else if (ext === '.svg') contentType = 'image/svg+xml';
+    else if (ext === '.webp') contentType = 'image/webp';
+    else if (ext === '.html' || ext === '.htm') contentType = 'text/html';
+    else if (ext === '.md' || ext === '.markdown') contentType = 'text/markdown';
+    else if (ext === '.js') contentType = 'application/javascript';
+    else if (ext === '.css') contentType = 'text/css';
+    
+    res.setHeader('Content-Type', contentType);
+
+    if (ref === '__live__') {
+      if (fs.existsSync(fullPath)) {
+        return res.sendFile(fullPath);
+      } else {
+        return res.status(404).send('File not found');
+      }
+    } else {
+      // Fetch binary data via git show
+      const buffer = await runGitBuffer(['show', `${ref}:${filePath}`], currentRepoPath);
+      return res.send(buffer);
+    }
+  } catch (err) {
+    res.status(500).send(`Failed to load raw file: ${err.message}`);
+  }
+});
+
 // Helper to parse standard unified diff
 function parseRawDiff(diffStr, filePath, oldFilePath) {
   const lines = diffStr.split('\n');
