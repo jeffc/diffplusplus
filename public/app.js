@@ -439,6 +439,8 @@ function updateRepoStatusUI() {
 }
 
 function populateDropdowns() {
+  const headLabel = state.currentBranch ? `HEAD (${state.currentBranch})` : 'HEAD';
+
   // Collect all valid values for baseRef select
   const baseValidValues = new Set(['HEAD']);
   state.branches.forEach(b => baseValidValues.add(b));
@@ -463,7 +465,7 @@ function populateDropdowns() {
 
   // 1. Populate Base Select
   let baseHtml = `<optgroup label="Special Refs">
-    <option value="HEAD" ${state.baseRef === 'HEAD' ? 'selected' : ''}>HEAD</option>
+    <option value="HEAD" ${state.baseRef === 'HEAD' ? 'selected' : ''}>${headLabel}</option>
   </optgroup>`;
 
   if (state.branches.length > 0) {
@@ -516,7 +518,7 @@ function populateDropdowns() {
   // 2. Populate Target Select
   let targetHtml = `<optgroup label="Special Refs">
     <option value="__live__" ${state.targetRef === '__live__' ? 'selected' : ''}>Live (Working Tree)</option>
-    <option value="HEAD" ${state.targetRef === 'HEAD' ? 'selected' : ''}>HEAD</option>
+    <option value="HEAD" ${state.targetRef === 'HEAD' ? 'selected' : ''}>${headLabel}</option>
   </optgroup>`;
 
   if (state.branches.length > 0) {
@@ -2004,12 +2006,14 @@ async function fetchAndRenderDag() {
 
       let commitHtml = '';
       if (row.commit) {
-        const commitDate = new Date(row.commit.date).toLocaleDateString();
+        const commitDateObj = new Date(row.commit.date);
+        const commitDate = commitDateObj.toLocaleDateString();
+        const commitFullDate = commitDateObj.toLocaleString();
         commitHtml = `
           <div class="dag-commit-col">
             <span class="dag-commit-sha" onclick="setCustomTargetRef('${row.commit.hash}')" title="Set as target ref">${row.commit.shortHash}</span>
             <span class="dag-commit-subject" title="${escapeHtml(row.commit.subject)}">${escapeHtml(row.commit.subject)}</span>
-            <span class="dag-commit-meta">${escapeHtml(row.commit.author)} on ${commitDate}</span>
+            <span class="dag-commit-meta">${escapeHtml(row.commit.author)} on <span class="commit-date-hover" title="${commitFullDate}">${commitDate}</span></span>
           </div>
         `;
       }
@@ -2066,14 +2070,16 @@ function renderFileHistory(historyData) {
   historyViewerPanel.innerHTML = `
     <div class="history-list">
       ${historyData.map(c => {
-        const commitDate = new Date(c.date).toLocaleString();
+        const commitDateObj = new Date(c.date);
+        const commitDate = commitDateObj.toLocaleDateString();
+        const commitFullDate = commitDateObj.toLocaleString();
         return `
           <div class="history-item">
             <div class="history-meta">
               <div class="history-subject">${escapeHtml(c.subject)}</div>
               <div class="history-author">
                 by <strong>${escapeHtml(c.author)}</strong>
-                <span>on ${commitDate}</span>
+                <span>on <span class="commit-date-hover" title="${commitFullDate}">${commitDate}</span></span>
               </div>
             </div>
             <div class="history-actions">

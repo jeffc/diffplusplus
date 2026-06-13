@@ -2387,8 +2387,7 @@ body {
   animation: flash-highlight 2s ease-out;
 }
 
-
-
-
-
-
+.commit-date-hover {
+  border-bottom: 1px dotted var(--text-muted);
+  cursor: help;
+}
