@@ -366,6 +366,10 @@ async function fetchDiffList(initialLoad = false, shouldReloadDetails = true) {
     renderFilesList();
     updateStatsUI();
 
+    if (!state.selectedFile) {
+      renderHomepage();
+    }
+
     if (initialLoad) {
       const params = new URLSearchParams(window.location.search);
       const urlFile = params.get('file');
@@ -674,6 +678,7 @@ function hideDetailView() {
   blameViewerPanel.style.display = 'none';
   renderViewerPanel.style.display = 'none';
   mainEmptyState.style.display = 'flex';
+  renderHomepage();
   syncStateToUrl();
 }
 
@@ -1699,3 +1704,180 @@ window.confirmRenderBinaryInline = (filePath, containerId) => {
     }
   }
 };
+
+window.showHomepage = () => {
+  const activeRow = filesListContainer.querySelector('.tree-file-row.active');
+  if (activeRow) {
+    activeRow.classList.remove('active');
+  }
+  hideDetailView();
+};
+
+window.setCustomTargetRef = (ref) => {
+  state.targetRef = ref;
+  populateDropdowns();
+  handleRefsChange();
+};
+
+window.setQuickCompare = (base, target) => {
+  state.baseRef = base;
+  state.targetRef = target;
+  populateDropdowns();
+  handleRefsChange();
+};
+
+window.resetCompareScope = () => {
+  state.baseRef = 'HEAD';
+  state.targetRef = '__live__';
+  populateDropdowns();
+  handleRefsChange();
+};
+
+function renderHomepage() {
+  if (!state.isRepo) {
+    mainEmptyState.innerHTML = `
+      <div class="empty-state-card">
+        <div class="empty-icon-container">
+          <i data-lucide="git-branch"></i>
+        </div>
+        <h3>diff++ Studio</h3>
+        <p>Select a file from the sidebar to inspect detailed git modifications or view full code line history using Git Blame.</p>
+        <div class="empty-tips">
+          <div class="tip-item">
+            <i data-lucide="zap"></i>
+            <span>Comparing with <strong>Live State</strong> will automatically monitor file changes.</span>
+          </div>
+          <div class="tip-item">
+            <i data-lucide="eye"></i>
+            <span>Toggle between <strong>Unified</strong> and <strong>Split</strong> diff layouts.</span>
+          </div>
+        </div>
+      </div>
+    `;
+    lucide.createIcons();
+    return;
+  }
+
+  // Extract folder name from path
+  const repoName = state.repoPath.split('/').filter(Boolean).pop() || 'Repository';
+  
+  // Calculate status breakdown
+  const activeFiles = state.files.filter(f => !f.isIgnored);
+  const changedCount = activeFiles.filter(f => f.status !== 'unchanged' && !f.isUntracked).length;
+  const untrackedCount = activeFiles.filter(f => f.isUntracked).length;
+  
+  // Commits list html
+  let commitsHtml = '';
+  if (state.commits.length > 0) {
+    const recent = state.commits.slice(0, 5);
+    commitsHtml = `
+      <div class="dashboard-section">
+        <h3><i data-lucide="history"></i> Recent Commit History</h3>
+        <div class="dashboard-timeline">
+          ${recent.map(c => {
+            const commitDate = new Date(c.date).toLocaleDateString();
+            return `
+              <div class="timeline-item">
+                <div class="timeline-meta">
+                  <span class="commit-sha" onclick="setCustomTargetRef('${c.hash}')" title="Set as target ref">${c.shortHash}</span>
+                  <span class="commit-date">${commitDate}</span>
+                </div>
+                <div class="timeline-body">
+                  <div class="commit-subject">${escapeHtml(c.subject)}</div>
+                  <div class="commit-author">by ${escapeHtml(c.author)}</div>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    `;
+  } else {
+    commitsHtml = `
+      <div class="dashboard-section">
+        <h3><i data-lucide="history"></i> Recent Commit History</h3>
+        <p class="empty-dashboard-text">No commits found in history.</p>
+      </div>
+    `;
+  }
+
+  mainEmptyState.innerHTML = `
+    <div class="dashboard-container">
+      <div class="dashboard-header">
+        <div class="dashboard-title-group">
+          <h2>${escapeHtml(repoName)}</h2>
+          <div class="repo-abs-path">${escapeHtml(state.repoPath)}</div>
+        </div>
+        <div class="dashboard-branch-badge">
+          <i data-lucide="git-branch"></i>
+          <span>${escapeHtml(state.currentBranch || 'unknown')}</span>
+        </div>
+      </div>
+      
+      <div class="dashboard-grid">
+        <div class="dashboard-card status-card">
+          <div class="card-icon"><i data-lucide="folder-git-2"></i></div>
+          <div class="card-title">Workspace Status</div>
+          <div class="status-stats">
+            <div class="status-stat-item">
+              <span class="stat-num color-modified">${changedCount}</span>
+              <span class="stat-label">Changed Tracked Files</span>
+            </div>
+            <div class="status-stat-item">
+              <span class="stat-num color-untracked">${untrackedCount}</span>
+              <span class="stat-label">Untracked Files</span>
+            </div>
+          </div>
+        </div>
+        
+        <div class="dashboard-card compare-card">
+          <div class="card-icon"><i data-lucide="git-compare"></i></div>
+          <div class="card-title">Compare Scope</div>
+          <div class="compare-details">
+            <div class="compare-ref-flow">
+              <span class="ref-pill base-pill">${escapeHtml(state.baseRef)}</span>
+              <i data-lucide="arrow-right"></i>
+              <span class="ref-pill target-pill">${escapeHtml(state.targetRef === '__live__' ? 'Live' : state.targetRef)}</span>
+            </div>
+            <div class="compare-scope-label">Comparing base ref to target ref</div>
+          </div>
+        </div>
+
+        <div class="dashboard-card summary-card">
+          <div class="card-icon"><i data-lucide="tags"></i></div>
+          <div class="card-title">References</div>
+          <div class="ref-stats">
+            <div class="ref-stat-item">
+              <span class="ref-num">${state.branches.length}</span>
+              <span class="ref-label">Branches</span>
+            </div>
+            <div class="ref-stat-item">
+              <span class="ref-num">${state.tags.length}</span>
+              <span class="ref-label">Tags</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="dashboard-columns">
+        ${commitsHtml}
+        
+        <div class="dashboard-section">
+          <h3><i data-lucide="zap"></i> Quick Actions</h3>
+          <div class="dashboard-actions">
+            <button class="btn btn-dashboard" onclick="setQuickCompare('HEAD', '__live__')">
+              <i data-lucide="play"></i> Compare HEAD vs Live State
+            </button>
+            <button class="btn btn-dashboard" onclick="setQuickCompare('HEAD~1', 'HEAD')">
+              <i data-lucide="history"></i> Compare Last Commit (HEAD~1 vs HEAD)
+            </button>
+            <button class="btn btn-dashboard" onclick="resetCompareScope()">
+              <i data-lucide="refresh-cw"></i> Reset Scope (HEAD vs Live)
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  lucide.createIcons();
+}
