@@ -21,7 +21,6 @@ updates as you edit files.
 - **Versatile Comparisons**: Compare any two git references—branches, tags, commits, or the active **Live State (Working Tree)**.
 - **Real-Time Workspace Watcher**: When comparing against the Live State, the app watches your files (respecting `.gitignore` exclusions) and automatically reloads the diff list and editor views when modifications are saved, while suppressing startup notification toasts on load.
 - **Visual Commit Graph (DAG)**: An interactive SVG-rendered graph of the commit log (`git log --graph`) displayed on the dashboard home screen. Features color-coded branches/merges and clickable commit node dots to instantly pick base/target comparison references.
-- **Code Symbol Outline (AST Navigation)**: An interactive sidebar drawer extracting classes, functions, methods, and markdown headings dynamically from source files with click-to-scroll and glowing line-flash highlights.
 - **File History Explorer**: A dedicated "History" tab in the main panel toolbar to browse a file-specific commit log, with one-click actions to view full content at that commit or inspect the diff introduced by it.
 - **Dual Diff Formats**: Toggle between a **Unified** (single-column inline) diff and a premium **Split** (side-by-side) diff.
 - **Git Blame Mode**: Hides diff annotations to show a line-by-line file blame. Groups consecutive lines written in the same commit to span a single metadata block. Commits are mapped to a hand-curated palette of 16 highly distinct, premium HSL colors for clear visual separation, with full commit details available on hover.
@@ -103,28 +102,7 @@ docker run -d --name diff-viewer -p 3000:3000 -v /path/to/your/local/git-repo:/r
 
 Open your web browser and navigate to **`http://localhost:3000`**. In the repository loader input box, type `/repo` and press **Enter** to inspect the mounted repository.
 
----
 
-### Background Symbol Indexer & Large Repositories
-
-On startup or when loading a repository, `diff++` starts a background task to index all code symbol definitions (classes, functions, methods) across the repository. This enables **cross-file definition resolution** (meaning you can click on a function name in any file to go directly to its definition in another file!).
-
-For very large repositories, this indexer can consume CPU and memory. You can easily **disable repository-wide indexing** using the `--no-indexing` flag:
-
-#### Disabling Indexing (Local Setup)
-Run the server with the `--no-indexing` flag passed as an argument:
-```bash
-npm start -- --no-indexing
-```
-*(Or directly run `node server.js --no-indexing`)*
-
-#### Disabling Indexing (Docker Setup)
-Pass the `--no-indexing` argument to the container startup:
-```bash
-docker run -d --name diff-viewer -p 3000:3000 -v /path/to/your/local/git-repo:/repo diff-viewer node server.js --no-indexing
-```
-
-If indexing is disabled, the UI will display a **`INDEXING DISABLED`** status badge, and all other features (including local file symbols extraction, code outlines, and blame views) will continue to work perfectly.
 
 ---
 
@@ -191,9 +169,4 @@ In the top-right toolbar of the main panel:
     - **View Content**: Click this button on any commit in the list to load and view the complete file content at that point in history.
     - **View Diff**: Click this button to compare that commit against its parent (`commit~1`), highlighting the exact changes introduced by that commit in this file.
 
-### 8. Code Symbol Outline (AST Navigation)
 
-- **Toggling the Outline**: While viewing a file (in Diff, Blame, or Render modes), click the **Outline** button in the toolbar to reveal a right-hand sidebar panel.
-- **Syntax Symbol Extraction**: The backend dynamically parses common file formats (JavaScript, TypeScript, Python, Go, Rust, C/C++, and Markdown headings) using regex AST matchers.
-- **Quick Navigation**: The outline list displays all classes, functions, methods, and headings with specific type icons and their line numbers.
-- **Scroll & Flash**: Click any symbol row in the outline sidebar to automatically scroll the code editor to the exact line of the symbol, triggering a temporary glowing purple line-flash highlight.

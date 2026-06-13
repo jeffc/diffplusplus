@@ -26,12 +26,10 @@ const state = {
   expandedSummaryFiles: new Set(), // Set of paths expanded in summary list
   searchTerm: '',
   
-  sseSource: null,
-  isOutlineOpen: false,
-  symbols: [],
-  globalRepositorySymbols: null,
-  pendingScrollLine: null
+  sseSource: null
 };
+
+let blockPushState = false;
 
 // DOM Elements
 const repoPathInput = document.getElementById('repoPathInput');
@@ -75,11 +73,7 @@ const diffViewerPanel = document.getElementById('diffViewerPanel');
 const blameViewerPanel = document.getElementById('blameViewerPanel');
 const renderViewerPanel = document.getElementById('renderViewerPanel');
 const historyViewerPanel = document.getElementById('historyViewerPanel');
-const codeOutlinePanel = document.getElementById('codeOutlinePanel');
-const outlineToggleBtn = document.getElementById('outlineToggleBtn');
-const outlineToggleGroup = document.getElementById('outlineToggleGroup');
-const outlineCloseBtn = document.getElementById('outlineCloseBtn');
-const outlineSymbolsContainer = document.getElementById('outlineSymbolsContainer');
+
 const toastContainer = document.getElementById('toastContainer');
 
 // ==========================================================================
@@ -95,6 +89,8 @@ function initApp() {
   repoPathInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') handleLoadRepo();
   });
+
+
 
   // Ref selection listeners
   baseRefSelect.addEventListener('change', (e) => {
@@ -190,17 +186,7 @@ function initApp() {
   modeRenderBtn.addEventListener('click', () => setViewMode('render'));
   modeHistoryBtn.addEventListener('click', () => setViewMode('history'));
 
-  outlineToggleBtn.addEventListener('click', () => {
-    state.isOutlineOpen = !state.isOutlineOpen;
-    outlineToggleBtn.classList.toggle('active', state.isOutlineOpen);
-    fetchAndRenderOutline();
-  });
 
-  outlineCloseBtn.addEventListener('click', () => {
-    state.isOutlineOpen = false;
-    outlineToggleBtn.classList.remove('active');
-    codeOutlinePanel.style.display = 'none';
-  });
 
 
   // File search
@@ -225,114 +211,7 @@ function initApp() {
   }
 }
 
-// ==========================================================================
-// Background Indexing & Symbol Resolution
-// ==========================================================================
-let indexerPollInterval = null;
 
-async function checkIndexerStatus() {
-  if (!state.isRepo) {
-    updateIndexerStatusUI('idle');
-    stopIndexerPolling();
-    return;
-  }
-
-  try {
-    const res = await fetch('/api/indexer/status');
-    if (!res.ok) throw new Error('API error');
-    const data = await res.json();
-
-    updateIndexerStatusUI(data.status, data.count);
-
-    if (data.status === 'indexing') {
-      startIndexerPolling();
-    } else {
-      stopIndexerPolling();
-      // If ready and we haven't loaded repository-wide symbols yet, fetch them
-      if (data.status === 'ready' && !state.globalRepositorySymbols) {
-        const symRes = await fetch('/api/indexer/symbols');
-        if (symRes.ok) {
-          state.globalRepositorySymbols = await symRes.json();
-          // Re-link symbols in the active panel now that we have global references
-          linkSymbolsInDom(document);
-        }
-      }
-    }
-  } catch (err) {
-    updateIndexerStatusUI('failed');
-    stopIndexerPolling();
-  }
-}
-
-function startIndexerPolling() {
-  if (indexerPollInterval) return;
-  indexerPollInterval = setInterval(checkIndexerStatus, 2000);
-}
-
-function stopIndexerPolling() {
-  if (indexerPollInterval) {
-    clearInterval(indexerPollInterval);
-    indexerPollInterval = null;
-  }
-}
-
-function updateIndexerStatusUI(status, count = 0) {
-  const badge = document.getElementById('indexerStatusBadge');
-  if (!badge) return;
-
-  if (!state.isRepo || status === 'idle') {
-    badge.style.display = 'none';
-    return;
-  }
-
-  badge.style.display = 'inline-flex';
-  badge.className = 'status-badge'; // reset class list
-
-  let iconHtml = '';
-  let text = '';
-
-  switch (status) {
-    case 'indexing':
-      badge.classList.add('status-indexing');
-      iconHtml = '<i data-lucide="loader" class="spinner-icon"></i>';
-      text = 'Indexing symbols...';
-      break;
-    case 'ready':
-      badge.classList.add('status-ready');
-      iconHtml = '<i data-lucide="check-circle-2"></i>';
-      text = `Symbols Ready (${count} files)`;
-      break;
-    case 'disabled':
-      badge.classList.add('status-disabled');
-      iconHtml = '<i data-lucide="ban"></i>';
-      text = 'Indexing disabled';
-      break;
-    case 'failed':
-      badge.classList.add('status-failed');
-      iconHtml = '<i data-lucide="circle-alert"></i>';
-      text = 'Indexing failed';
-      break;
-    default:
-      badge.style.display = 'none';
-      return;
-  }
-
-  badge.innerHTML = `${iconHtml} ${text}`;
-  lucide.createIcons();
-}
-
-window.navigateToRemoteSymbol = (filePath, lineNum) => {
-  // Try to find if this file is in state.files (changed list)
-  const file = state.files.find(f => f.path === filePath);
-  if (file) {
-    state.pendingScrollLine = lineNum;
-    selectFile(file);
-  } else {
-    // Unchanged file or not in status list -> open it as unchanged
-    state.pendingScrollLine = lineNum;
-    selectFile({ path: filePath, status: 'unchanged', oldPath: null });
-  }
-};
 
 // ==========================================================================
 // API Calls & State Mutations
@@ -531,7 +410,6 @@ async function fetchDiffList(initialLoad = false, shouldReloadDetails = true) {
       }
     }
 
-    checkIndexerStatus();
     syncStateToUrl();
   } catch (err) {
     showToast('Error', 'Failed to retrieve changed files list', 'info');
@@ -834,7 +712,6 @@ function hideDetailView() {
   blameViewerPanel.style.display = 'none';
   renderViewerPanel.style.display = 'none';
   historyViewerPanel.style.display = 'none';
-  codeOutlinePanel.style.display = 'none';
   mainEmptyState.style.display = 'flex';
   renderHomepage();
   syncStateToUrl();
@@ -910,9 +787,7 @@ async function loadDetailedContent() {
     renderDetailedContent();
   }
   
-  if (state.selectedFile) {
-    fetchAndRenderOutline();
-  }
+
 }
 
 // ==========================================================================
@@ -991,7 +866,6 @@ function renderDetailedDiff(diffData) {
   } else {
     renderSplitDiff(diffData, diffViewerPanel, state.fullContext);
   }
-  linkSymbolsInDom(diffViewerPanel);
 }
 
 function renderUnifiedDiff(diffData, targetElement, hideHunkHeaders = false) {
@@ -1208,7 +1082,6 @@ function renderDetailedBlame(blameData) {
 
   html += '</div>';
   blameViewerPanel.innerHTML = html;
-  linkSymbolsInDom(blameViewerPanel);
 }
 
 async function renderDetailedContent() {
@@ -1305,7 +1178,6 @@ async function renderDetailedContent() {
       </div>
     `;
     lucide.createIcons();
-    linkSymbolsInDom(renderViewerPanel);
   } catch (err) {
     renderViewerPanel.innerHTML = `<div class="loader-container" style="color: var(--status-del)"><i data-lucide="circle-alert"></i> Failed to retrieve content: ${err.message}</div>`;
     lucide.createIcons();
@@ -1452,10 +1324,7 @@ function setViewMode(mode) {
     fullContextToggleGroup.style.display = mode === 'diff' ? 'flex' : 'none';
   }
   
-  // Hide outline panel if switching away from content views or if history is active
-  if (mode === 'history' || !state.selectedFile) {
-    codeOutlinePanel.style.display = 'none';
-  }
+
   
   if (state.selectedFile) {
     if (mode === 'history') {
@@ -1853,7 +1722,7 @@ window.handleInlineToggle = (event, filePath, rowId) => {
   renderFilesList();
 };
 
-function syncStateToUrl() {
+function syncStateToUrl(push = true) {
   if (!state.repoPath) return;
   const url = new URL(window.location);
   url.searchParams.set('repoPath', state.repoPath);
@@ -1864,7 +1733,14 @@ function syncStateToUrl() {
   url.searchParams.set('layout', state.diffLayout || '');
   url.searchParams.set('fullContext', state.fullContext ? 'true' : 'false');
   
-  window.history.replaceState({}, '', url.pathname + url.search);
+  const targetUrl = url.pathname + url.search;
+  if (window.location.search !== url.search) {
+    if (push && !blockPushState) {
+      window.history.pushState({}, '', targetUrl);
+    } else {
+      window.history.replaceState({}, '', targetUrl);
+    }
+  }
 }
 
 function toggleFullContext() {
@@ -2153,250 +2029,7 @@ async function fetchAndRenderDag() {
   }
 }
 
-function linkSymbolsInDom(container) {
-  // We need at least local symbols or global symbols to proceed
-  const hasLocalSymbols = state.symbols && state.symbols.length > 0;
-  const hasGlobalSymbols = state.globalRepositorySymbols && Object.keys(state.globalRepositorySymbols).length > 0;
-  if (!hasLocalSymbols && !hasGlobalSymbols) return;
-
-  // Build merged map of symbol name -> { filePath, line, type, isLocal }
-  const mergedSymbols = new Map();
-
-  // 1. Populate with global symbols first (cross-file definitions)
-  if (hasGlobalSymbols) {
-    for (const name in state.globalRepositorySymbols) {
-      const defs = state.globalRepositorySymbols[name];
-      if (defs && defs.length > 0) {
-        // Take first definition
-        mergedSymbols.set(name, {
-          filePath: defs[0].filePath,
-          line: defs[0].line,
-          type: defs[0].type,
-          isLocal: false
-        });
-      }
-    }
-  }
-
-  // 2. Overwrite with local symbols (local definitions take priority)
-  if (hasLocalSymbols) {
-    state.symbols.forEach(sym => {
-      if (sym.line && ['function', 'method', 'class'].includes(sym.type)) {
-        mergedSymbols.set(sym.name, {
-          filePath: state.selectedFile.path,
-          line: sym.line,
-          type: sym.type,
-          isLocal: true
-        });
-      }
-    });
-  }
-
-  if (mergedSymbols.size === 0) return;
-
-  // Escape symbol names to build a safe regular expression
-  const escapedNames = Array.from(mergedSymbols.keys())
-    .map(name => name.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'))
-    .filter(name => name.length > 0);
-
-  if (escapedNames.length === 0) return;
-
-  // Match symbol names as whole words
-  const regex = new RegExp(`\\b(${escapedNames.join('|')})\\b`, 'g');
-
-  // Find all elements containing code cells
-  const codeElements = container.querySelectorAll('.diff-code, .blame-code, .fallback-code');
-  codeElements.forEach(el => {
-    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false);
-    const nodesToReplace = [];
-    while (walker.nextNode()) {
-      const node = walker.currentNode;
-      
-      // Skip text nodes inside links, comments, or string literals to prevent dubious matches
-      if (node.parentElement) {
-        const parent = node.parentElement;
-        if (parent.classList.contains('code-symbol-link') ||
-            parent.closest('.hljs-comment') ||
-            parent.closest('.hljs-string') ||
-            parent.tagName.toLowerCase() === 'a') {
-          continue;
-        }
-      }
-      
-      if (regex.test(node.nodeValue)) {
-        nodesToReplace.push(node);
-      }
-    }
-
-    nodesToReplace.forEach(node => {
-      const text = node.nodeValue;
-      regex.lastIndex = 0;
-      
-      const fragment = document.createDocumentFragment();
-      let lastIdx = 0;
-      let match;
-      
-      while ((match = regex.exec(text)) !== null) {
-        const matchText = match[0];
-        const matchIdx = match.index;
-        
-        // Add text leading to the match
-        if (matchIdx > lastIdx) {
-          fragment.appendChild(document.createTextNode(text.substring(lastIdx, matchIdx)));
-        }
-        
-        // Add clickable link element
-        const meta = mergedSymbols.get(matchText);
-        const link = document.createElement('a');
-        link.className = 'code-symbol-link';
-        link.href = '#';
-        link.textContent = matchText;
-        
-        if (meta.isLocal) {
-          link.title = `Go to definition of ${matchText} (Line ${meta.line})`;
-          link.addEventListener('click', (e) => {
-            e.preventDefault();
-            scrollToSymbolLine(meta.line);
-          });
-        } else {
-          // Display short path in title
-          const fileBasename = meta.filePath.split('/').pop();
-          link.title = `Go to definition of ${matchText} in ${fileBasename} (Line ${meta.line})`;
-          link.addEventListener('click', (e) => {
-            e.preventDefault();
-            navigateToRemoteSymbol(meta.filePath, meta.line);
-          });
-        }
-        
-        fragment.appendChild(link);
-        lastIdx = regex.lastIndex;
-      }
-      
-      if (lastIdx < text.length) {
-        fragment.appendChild(document.createTextNode(text.substring(lastIdx)));
-      }
-      
-      if (node.parentNode) {
-        node.parentNode.replaceChild(fragment, node);
-      }
-    });
-  });
-}
-
-async function fetchAndRenderOutline() {
-  if (!state.selectedFile) {
-    outlineToggleGroup.style.display = 'none';
-    codeOutlinePanel.style.display = 'none';
-    state.symbols = [];
-    return;
-  }
-
-  const filePath = state.selectedFile.path;
-  const ext = '.' + filePath.split('.').pop().toLowerCase();
-  const supportedExtensions = ['.js', '.jsx', '.ts', '.tsx', '.py', '.go', '.rs', '.c', '.cpp', '.h', '.hpp', '.cc', '.md', '.markdown'];
-
-  if (!supportedExtensions.includes(ext)) {
-    outlineToggleGroup.style.display = 'none';
-    codeOutlinePanel.style.display = 'none';
-    state.symbols = [];
-    return;
-  }
-
-  outlineToggleGroup.style.display = 'flex';
-  
-  if (state.isOutlineOpen) {
-    codeOutlinePanel.style.display = 'flex';
-    outlineToggleBtn.classList.add('active');
-  } else {
-    codeOutlinePanel.style.display = 'none';
-    outlineToggleBtn.classList.remove('active');
-  }
-
-  if (state.isOutlineOpen) {
-    outlineSymbolsContainer.innerHTML = '<div class="loader-container" style="padding: 10px 0;"><div class="spinner" style="width: 16px; height: 16px; margin: 0 auto;"></div></div>';
-  }
-
-  try {
-    const res = await fetch(`/api/symbols?path=${encodeURIComponent(filePath)}&ref=${encodeURIComponent(state.targetRef)}`);
-    if (!res.ok) throw new Error('Failed to fetch symbols');
-    const symbols = await res.json();
-    state.symbols = symbols;
-    
-    if (state.isOutlineOpen) {
-      renderSymbolsList();
-    }
-    
-    linkSymbolsInDom(document);
-
-    if (state.pendingScrollLine) {
-      const line = state.pendingScrollLine;
-      state.pendingScrollLine = null;
-      setTimeout(() => {
-        scrollToSymbolLine(line);
-      }, 100);
-    }
-  } catch (err) {
-    state.symbols = [];
-    if (state.isOutlineOpen) {
-      outlineSymbolsContainer.innerHTML = `<div style="color: var(--status-del); font-size: 11px; padding: 10px;">Outline failed: ${err.message}</div>`;
-    }
-  }
-}
-
-function renderSymbolsList() {
-  if (!state.symbols || state.symbols.length === 0) {
-    outlineSymbolsContainer.innerHTML = '<div style="color: var(--text-muted); font-size: 11px; padding: 10px; text-align: center;">No symbols found in this file.</div>';
-    return;
-  }
-
-  outlineSymbolsContainer.innerHTML = state.symbols.map(s => {
-    let iconClass = '';
-    let iconText = '';
-    
-    if (s.type === 'class') {
-      iconClass = 'symbol-class';
-      iconText = 'C';
-    } else if (s.type === 'function') {
-      iconClass = 'symbol-function';
-      iconText = 'F';
-    } else if (s.type === 'method') {
-      iconClass = 'symbol-method';
-      iconText = 'M';
-    } else if (s.type.startsWith('h')) {
-      iconClass = 'symbol-heading';
-      iconText = '#';
-    } else {
-      iconClass = 'symbol-class';
-      iconText = 'S';
-    }
-
-    return `
-      <div class="outline-row" onclick="scrollToSymbolLine(${s.line})">
-        <span class="outline-symbol-icon ${iconClass}">${iconText}</span>
-        <span class="outline-symbol-name" title="${escapeHtml(s.name)}">${escapeHtml(s.name)}</span>
-        <span class="outline-symbol-line">L${s.line}</span>
-      </div>
-    `;
-  }).join('');
-}
-
-window.scrollToSymbolLine = (lineNum) => {
-  const activePanelId = state.viewMode === 'diff' ? 'diffViewerPanel' 
-                      : state.viewMode === 'blame' ? 'blameViewerPanel'
-                      : 'renderViewerPanel';
-  
-  const panel = document.getElementById(activePanelId);
-  if (!panel) return;
-
-  const targetEl = panel.querySelector(`[data-line="${lineNum}"]`);
-  if (targetEl) {
-    targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    
-    targetEl.classList.remove('line-flash-highlight');
-    void targetEl.offsetWidth; // trigger reflow
-    targetEl.classList.add('line-flash-highlight');
-  }
-};
+// 
 
 async function loadFileHistory() {
   if (!state.selectedFile) return;
@@ -2475,4 +2108,66 @@ window.viewFileCommitDiff = (hash) => {
   populateDropdowns();
   handleRefsChange();
 };
+
+window.addEventListener('popstate', async () => {
+  const params = new URLSearchParams(window.location.search);
+  const urlRepoPath = params.get('repoPath');
+  
+  if (!urlRepoPath) {
+    state.isRepo = false;
+    state.repoPath = '';
+    clearRepoData();
+    renderHomepage();
+    return;
+  }
+  
+  blockPushState = true;
+  try {
+    if (urlRepoPath !== state.repoPath) {
+      await loadRepoFromPath(urlRepoPath, true);
+    } else {
+      const urlBase = params.get('base') || '';
+      const urlTarget = params.get('target') || '';
+      const urlFile = params.get('file') || '';
+      const urlMode = params.get('mode') || 'diff';
+      const urlLayout = params.get('layout') || 'unified';
+      const urlFullContext = params.get('fullContext') === 'true';
+
+      const refsChanged = (urlBase !== state.baseRef) || (urlTarget !== state.targetRef);
+      
+      state.baseRef = urlBase;
+      state.targetRef = urlTarget;
+      state.viewMode = urlMode;
+      state.diffLayout = urlLayout;
+      state.fullContext = urlFullContext;
+
+      populateDropdowns();
+
+      unifiedFormatBtn.classList.toggle('active', state.diffLayout === 'unified');
+      splitFormatBtn.classList.toggle('active', state.diffLayout === 'split');
+      
+      modeDiffBtn.classList.toggle('active', state.viewMode === 'diff');
+      modeBlameBtn.classList.toggle('active', state.viewMode === 'blame');
+      modeRenderBtn.classList.toggle('active', state.viewMode === 'render');
+      modeHistoryBtn.classList.toggle('active', state.viewMode === 'history');
+      
+      if (fullContextBtn) {
+        fullContextBtn.classList.toggle('active', state.fullContext === true);
+      }
+
+      if (refsChanged) {
+        await fetchDiffList(false, false);
+      }
+
+      if (urlFile) {
+        const file = state.files.find(f => f.path === urlFile) || { path: urlFile, status: 'unchanged', oldPath: null };
+        selectFile(file, false);
+      } else {
+        hideDetailView();
+      }
+    }
+  } finally {
+    blockPushState = false;
+  }
+});
 

@@ -35,9 +35,6 @@
         <span id="repoStatusBadge" class="status-badge status-invalid">
           <i data-lucide="circle-x"></i> Invalid Repo
         </span>
-        <span id="indexerStatusBadge" class="status-badge" style="display: none;">
-          <i data-lucide="loader"></i> Indexing...
-        </span>
       </div>
     </div>
 
@@ -75,10 +72,14 @@
         </div>
       </div>
 
-      <!-- Watch Status -->
-      <div class="watch-status-indicator" id="watchIndicator" title="Watching live directory for changes">
-        <span class="pulse-dot"></span>
-        <span class="watch-label">LIVE WATCH</span>
+      <!-- Status Indicators Group -->
+      <div class="status-indicators-group">
+        <!-- Watch Status -->
+        <div class="watch-status-indicator" id="watchIndicator" title="Watching live directory for changes">
+          <span class="pulse-dot"></span>
+          <span class="watch-label">LIVE WATCH</span>
+        </div>
+
       </div>
     </div>
   </header>
@@ -140,12 +141,7 @@
             </button>
           </div>
 
-          <!-- Outline Toggle -->
-          <div class="toggle-group" id="outlineToggleGroup">
-            <button class="toggle-btn" id="outlineToggleBtn" title="Toggle Code Outline Sidebar">
-              <i data-lucide="list-tree"></i> Outline
-            </button>
-          </div>
+
 
           <!-- Mode Toggle (Diff vs Blame vs Render vs History) -->
           <div class="toggle-group">
@@ -211,16 +207,6 @@
           </div>
         </div>
 
-        <!-- Code Outline Sidebar Panel -->
-        <aside class="code-outline-panel" id="codeOutlinePanel" style="display: none;">
-          <div class="outline-header">
-            <h3><i data-lucide="list-tree"></i> Outline</h3>
-            <button class="outline-close-btn" id="outlineCloseBtn" title="Close Outline">&times;</button>
-          </div>
-          <div class="outline-symbols-container" id="outlineSymbolsContainer">
-            <!-- Symbols loaded dynamically -->
-          </div>
-        </aside>
       </div>
     </section>
   </main>
