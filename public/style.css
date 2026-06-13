@@ -2474,5 +2474,24 @@ body {
   animation: flash-highlight 2s ease-out;
 }
 
+/* Interactive code symbol definition links */
+.code-symbol-link {
+  color: #a78bfa !important; /* Light purple to pop nicely in dark mode */
+  text-decoration: none;
+  border-bottom: 1px dashed rgba(167, 139, 250, 0.4);
+  cursor: pointer;
+  transition: border-bottom-color 0.2s, background-color 0.2s, color 0.2s;
+  padding: 0 2px;
+  border-radius: 2px;
+  font-weight: 500;
+}
+
+.code-symbol-link:hover {
+  color: #ffffff !important;
+  border-bottom-color: #a78bfa;
+  background-color: rgba(167, 139, 250, 0.2);
+}
+
+
 
 

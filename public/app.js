@@ -860,6 +860,7 @@ function renderDetailedDiff(diffData) {
   } else {
     renderSplitDiff(diffData, diffViewerPanel, state.fullContext);
   }
+  linkSymbolsInDom(diffViewerPanel);
 }
 
 function renderUnifiedDiff(diffData, targetElement, hideHunkHeaders = false) {
@@ -1076,6 +1077,7 @@ function renderDetailedBlame(blameData) {
 
   html += '</div>';
   blameViewerPanel.innerHTML = html;
+  linkSymbolsInDom(blameViewerPanel);
 }
 
 async function renderDetailedContent() {
@@ -1172,6 +1174,7 @@ async function renderDetailedContent() {
       </div>
     `;
     lucide.createIcons();
+    linkSymbolsInDom(renderViewerPanel);
   } catch (err) {
     renderViewerPanel.innerHTML = `<div class="loader-container" style="color: var(--status-del)"><i data-lucide="circle-alert"></i> Failed to retrieve content: ${err.message}</div>`;
     lucide.createIcons();
@@ -1646,11 +1649,6 @@ function renderFileTreeHTML(node, depth = 0) {
           </div>
           <div class="tree-file-right">
             ${badgeHtml}
-            <button class="expand-diff-btn ${isExpanded ? 'expanded' : ''}" 
-                    title="${isExpanded ? 'Collapse inline diff' : 'Expand inline diff'}" 
-                    onclick="handleInlineToggle(event, '${escapeJsString(file.path)}', '${rowId}')">
-              <i data-lucide="chevron-right"></i>
-            </button>
           </div>
         </div>
         ${inlineDiffHtml}
@@ -2024,10 +2022,103 @@ async function fetchAndRenderDag() {
   }
 }
 
+function linkSymbolsInDom(container) {
+  if (!state.symbols || state.symbols.length === 0) return;
+
+  // Build map of symbol name to definition line
+  const symbolMap = new Map();
+  state.symbols.forEach(sym => {
+    if (sym.line && ['function', 'method', 'class'].includes(sym.type)) {
+      symbolMap.set(sym.name, sym.line);
+    }
+  });
+
+  if (symbolMap.size === 0) return;
+
+  // Escape symbol names to build a safe regular expression
+  const escapedNames = Array.from(symbolMap.keys())
+    .map(name => name.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'))
+    .filter(name => name.length > 0);
+
+  if (escapedNames.length === 0) return;
+
+  // Match symbol names as whole words
+  const regex = new RegExp(`\\b(${escapedNames.join('|')})\\b`, 'g');
+
+  // Find all elements containing code cells
+  const codeElements = container.querySelectorAll('.diff-code, .blame-code, .fallback-code');
+  codeElements.forEach(el => {
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false);
+    const nodesToReplace = [];
+    while (walker.nextNode()) {
+      const node = walker.currentNode;
+      
+      // Skip text nodes inside links, comments, or string literals to preventdubious matches
+      if (node.parentElement) {
+        const parent = node.parentElement;
+        if (parent.classList.contains('code-symbol-link') ||
+            parent.closest('.hljs-comment') ||
+            parent.closest('.hljs-string') ||
+            parent.tagName.toLowerCase() === 'a') {
+          continue;
+        }
+      }
+      
+      if (regex.test(node.nodeValue)) {
+        nodesToReplace.push(node);
+      }
+    }
+
+    nodesToReplace.forEach(node => {
+      const text = node.nodeValue;
+      regex.lastIndex = 0;
+      
+      const fragment = document.createDocumentFragment();
+      let lastIdx = 0;
+      let match;
+      
+      while ((match = regex.exec(text)) !== null) {
+        const matchText = match[0];
+        const matchIdx = match.index;
+        
+        // Add text leading to the match
+        if (matchIdx > lastIdx) {
+          fragment.appendChild(document.createTextNode(text.substring(lastIdx, matchIdx)));
+        }
+        
+        // Add clickable link element
+        const lineNum = symbolMap.get(matchText);
+        const link = document.createElement('a');
+        link.className = 'code-symbol-link';
+        link.href = '#';
+        link.textContent = matchText;
+        link.title = `Go to definition of ${matchText} (Line ${lineNum})`;
+        
+        link.addEventListener('click', (e) => {
+          e.preventDefault();
+          scrollToSymbolLine(lineNum);
+        });
+        
+        fragment.appendChild(link);
+        lastIdx = regex.lastIndex;
+      }
+      
+      if (lastIdx < text.length) {
+        fragment.appendChild(document.createTextNode(text.substring(lastIdx)));
+      }
+      
+      if (node.parentNode) {
+        node.parentNode.replaceChild(fragment, node);
+      }
+    });
+  });
+}
+
 async function fetchAndRenderOutline() {
   if (!state.selectedFile) {
     outlineToggleGroup.style.display = 'none';
     codeOutlinePanel.style.display = 'none';
+    state.symbols = [];
     return;
   }
 
@@ -2038,6 +2129,7 @@ async function fetchAndRenderOutline() {
   if (!supportedExtensions.includes(ext)) {
     outlineToggleGroup.style.display = 'none';
     codeOutlinePanel.style.display = 'none';
+    state.symbols = [];
     return;
   }
 
@@ -2049,19 +2141,28 @@ async function fetchAndRenderOutline() {
   } else {
     codeOutlinePanel.style.display = 'none';
     outlineToggleBtn.classList.remove('active');
-    return;
   }
 
-  outlineSymbolsContainer.innerHTML = '<div class="loader-container" style="padding: 10px 0;"><div class="spinner" style="width: 16px; height: 16px; margin: 0 auto;"></div></div>';
+  if (state.isOutlineOpen) {
+    outlineSymbolsContainer.innerHTML = '<div class="loader-container" style="padding: 10px 0;"><div class="spinner" style="width: 16px; height: 16px; margin: 0 auto;"></div></div>';
+  }
 
   try {
     const res = await fetch(`/api/symbols?path=${encodeURIComponent(filePath)}&ref=${encodeURIComponent(state.targetRef)}`);
     if (!res.ok) throw new Error('Failed to fetch symbols');
     const symbols = await res.json();
     state.symbols = symbols;
-    renderSymbolsList();
+    
+    if (state.isOutlineOpen) {
+      renderSymbolsList();
+    }
+    
+    linkSymbolsInDom(document);
   } catch (err) {
-    outlineSymbolsContainer.innerHTML = `<div style="color: var(--status-del); font-size: 11px; padding: 10px;">Outline failed: ${err.message}</div>`;
+    state.symbols = [];
+    if (state.isOutlineOpen) {
+      outlineSymbolsContainer.innerHTML = `<div style="color: var(--status-del); font-size: 11px; padding: 10px;">Outline failed: ${err.message}</div>`;
+    }
   }
 }
 
