@@ -1983,9 +1983,9 @@ async function fetchAndRenderDag() {
         } else if (char === '|') {
           shapes.push(`<line x1="${x}" y1="0" x2="${x}" y2="${rowHeight}" stroke="${color}" stroke-width="2" />`);
         } else if (char === '/') {
-          shapes.push(`<line x1="${(c + 1) * colWidth + colWidth / 2}" y1="0" x2="${c * colWidth + colWidth / 2}" y2="${rowHeight}" stroke="${color}" stroke-width="2" />`);
+          shapes.push(`<line x1="${(c + 1) * colWidth + colWidth / 2}" y1="0" x2="${(c - 1) * colWidth + colWidth / 2}" y2="${rowHeight}" stroke="${color}" stroke-width="2" />`);
         } else if (char === '\\') {
-          shapes.push(`<line x1="${(c - 1) * colWidth + colWidth / 2}" y1="0" x2="${c * colWidth + colWidth / 2}" y2="${rowHeight}" stroke="${color}" stroke-width="2" />`);
+          shapes.push(`<line x1="${(c - 1) * colWidth + colWidth / 2}" y1="0" x2="${(c + 1) * colWidth + colWidth / 2}" y2="${rowHeight}" stroke="${color}" stroke-width="2" />`);
         } else if (char === '_') {
           shapes.push(`<line x1="${c * colWidth}" y1="${cy}" x2="${(c + 1) * colWidth}" y2="${cy}" stroke="${color}" stroke-width="2" />`);
         }
