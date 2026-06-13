@@ -1,5 +1,8 @@
 # diff++ (Git Diff & Blame Studio)
 
+> [!IMPORTANT]
+> **Development Methodology**: This tool was **100% vibe coded**. No specs, no strict roadmaps—just pure developer intuition, coffee, and AI synergy. 🎸✨
+
 A sleek, premium local web application designed to show per-file diffs and detailed blame histories for any local Git repository. Point the tool at your repository, compare branches, commits, or your active live workspace, and view real-time updates as you edit files.
 
 ---
@@ -9,6 +12,9 @@ A sleek, premium local web application designed to show per-file diffs and detai
 - **Point-and-Explore Repo Loader**: Run the server once and point the UI to any directory on your local machine. If it is a valid Git repository, it loads instantly.
 - **Versatile Comparisons**: Compare any two git references—branches, tags, commits, or the active **Live State (Working Tree)**.
 - **Real-Time Workspace Watcher**: When comparing against the Live State, the app watches your files (respecting `.gitignore` exclusions) and automatically reloads the diff list and editor views when modifications are saved, while suppressing startup notification toasts on load.
+- **Visual Commit Graph (DAG)**: An interactive SVG-rendered graph of the commit log (`git log --graph`) displayed on the dashboard home screen. Features color-coded branches/merges and clickable commit node dots to instantly pick base/target comparison references.
+- **Code Symbol Outline (AST Navigation)**: An interactive sidebar drawer extracting classes, functions, methods, and markdown headings dynamically from source files with click-to-scroll and glowing line-flash highlights.
+- **File History Explorer**: A dedicated "History" tab in the main panel toolbar to browse a file-specific commit log, with one-click actions to view full content at that commit or inspect the diff introduced by it.
 - **Dual Diff Formats**: Toggle between a **Unified** (single-column inline) diff and a premium **Split** (side-by-side) diff.
 - **Git Blame Mode**: Hides diff annotations to show a line-by-line file blame. Groups consecutive lines written in the same commit to span a single metadata block. Commits are mapped to a hand-curated palette of 16 highly distinct, premium HSL colors for clear visual separation, with full commit details available on hover.
 - **Repository Tree Sidebar**: Shows the full directory structure of your project by default. Features a compact, dense design for high scalability. Unchanged files are visible but clean; modified files highlight in status colors; untracked files are marked in green; and ignored files are deemphasized (reduced opacity/italicized).
@@ -19,6 +25,7 @@ A sleek, premium local web application designed to show per-file diffs and detai
 - **Dynamic Gitignore Watcher**: Reads and parses the repository's `.gitignore` file dynamically at runtime, using compiled rules to ignore files synchronously in the filesystem watcher (preventing overhead on ignored folders).
 - **URL State Tracking**: Synchronizes state variables (`repoPath`, `base`, `target`, `file`, `mode`, `layout`, `fullContext`) dynamically with the browser's URL search parameters, preserving the exact workspace layout and selection across page refreshes.
 - **Studio Aesthetics**: Premium dark theme powered by a custom CSS variables design system, glassmorphic header blur, smooth transitions, and pulse animations.
+- **100% Read-Only Safety**: The tool is strictly read-only on the repositories it touches, ensuring no risk to your working tree or commit history.
 
 ---
 
@@ -34,8 +41,13 @@ A sleek, premium local web application designed to show per-file diffs and detai
 
 ## Installation & Running
 
+### Prerequisites
+Make sure you have the following installed on your machine:
+- **Node.js** (v14 or higher recommended)
+- **Git** CLI (installed and available in your system's PATH)
+
 ### 1. Install Dependencies
-Clone or download the project and run:
+Clone or download the project and run the following command in the project directory:
 ```bash
 npm install
 ```
@@ -45,7 +57,7 @@ Run the startup script:
 ```bash
 npm start
 ```
-The application will boot up at **`http://localhost:3000`**.
+The application will boot up at **`http://localhost:3000`**. Open this URL in your web browser.
 
 ---
 
@@ -63,7 +75,14 @@ The application will boot up at **`http://localhost:3000`**.
 - **Manual Custom Ref Entry**: For either Base or Target, choose **Custom Ref...** at the bottom of the list. The select dropdown will transition into a text input field where you can enter any arbitrary git reference (such as commit hashes, branches, tags, or expressions like `HEAD~3`). Click the list icon next to the input field to return to the dropdown list.
 - *Note: If Live is selected, the green "LIVE WATCH" blinking indicator is active, indicating file modifications are actively tracked.*
 
-### 3. Filter and Browse Files
+### 3. Repository Homepage & Visual Commit Graph (DAG)
+- **Accessing the Homepage**: When you first load a repository, or anytime you click the **diff++** logo in the top-left header, the main panel displays a rich repository summary dashboard.
+- **Workspace Summary**: The dashboard provides real-time counts of modified files, untracked files, local branches, and tags. It also lists all modified files in a central scrollable list for quick access.
+- **Visual Commit Graph**: On the left side of the dashboard, an interactive SVG-styled DAG (Directed Acyclic Graph) of the Git commit log (`git log --graph`) is drawn.
+  - The branches, merges, and commit relationships are color-coded dynamically.
+  - **Interactivity**: Click on any commit node dot or commit SHA in the graph to set that commit as either the Base or Target reference instantly.
+
+### 4. Filter and Browse Files
 - **Full Repository Tree**: By default, the sidebar shows the complete directory tree of the repository in a dense, scannable layout. Folders containing modifications or untracked files are expanded by default and marked with a change indicator dot.
 - **Only Changes Filter**: Toggle the "Only Changes" switch to collapse the tree and show only modified, added, renamed, or untracked files.
 - **Color-Coded Statuses & Ignored Files**:
@@ -74,14 +93,14 @@ The application will boot up at **`http://localhost:3000`**.
 - Click a file to open the detailed file view.
 - Click the **Chevron Icon** (`>`) on the right of any file list item to expand the diff inline in the sidebar without losing your current main panel view.
 
-### 4. Diff Layout & Context Modes
+### 5. Diff Layout & Context Modes
 In the top-right toolbar of the main panel:
 - Click **Unified** to see edits inline with traditional red-deletion and green-addition lines.
 - Click **Split** to see the original file version side-by-side with the modified version. Deleted lines will align horizontally with added lines, and unmodified/normal context is aligned line-by-line.
 - Click **Full File** to show the entire file contents. The diff hunks are rendered in place within the rest of the unmodified file contents.
 - **Binary Files**: Opening a binary file will display a prompt asking for confirmation before loading. Click "Confirm and Render" to display its status/metadata.
 
-### 5. Inspect Line Blames
+### 6. Inspect Line Blames
 1. Open a file in the detailed workspace panel.
 2. In the top-right toolbar, click the **Blame** button.
 3. The diff highlights will vanish, and the file will render with line numbers and a left metadata column:
@@ -90,3 +109,16 @@ In the top-right toolbar of the main panel:
    - **Date**: Date of modification.
    - **Commit Color Stripe**: A color-coded vertical bar grouping lines written in the same commit.
 4. **Hover** over any meta card in the left column to view the full commit hash, author name, timestamp, and the complete commit summary message in a custom tooltip.
+
+### 7. File History Explorer
+- **Accessing History**: Open any file in the main panel, then click the **History** tab in the toolbar.
+- **Commit Log**: This displays a full, dedicated history log (`git log --follow`) of all commits that have modified the open file.
+- **Historical Actions**:
+  - **View Content**: Click this button on any commit in the list to load and view the complete file content at that point in history.
+  - **View Diff**: Click this button to compare that commit against its parent (`commit~1`), highlighting the exact changes introduced by that commit in this file.
+
+### 8. Code Symbol Outline (AST Navigation)
+- **Toggling the Outline**: While viewing a file (in Diff, Blame, or Render modes), click the **Outline** button in the toolbar to reveal a right-hand sidebar panel.
+- **Syntax Symbol Extraction**: The backend dynamically parses common file formats (JavaScript, TypeScript, Python, Go, Rust, C/C++, and Markdown headings) using regex AST matchers.
+- **Quick Navigation**: The outline list displays all classes, functions, methods, and headings with specific type icons and their line numbers.
+- **Scroll & Flash**: Click any symbol row in the outline sidebar to automatically scroll the code editor to the exact line of the symbol, triggering a temporary glowing purple line-flash highlight.
