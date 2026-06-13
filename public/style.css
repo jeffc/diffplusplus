@@ -2076,33 +2076,41 @@ body {
   font-style: italic;
 }
 
-/* Quick Actions buttons list */
-.dashboard-actions {
+/* Changed Files list on dashboard */
+.dashboard-changed-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
+  max-height: 380px;
+  overflow-y: auto;
+  padding-right: 6px;
 }
 
-.btn-dashboard {
-  justify-content: flex-start;
-  padding: 12px 16px;
+.dashboard-file-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
   background-color: var(--bg-surface);
   border: 1px solid var(--border-color);
-  font-weight: 550;
-  font-size: 13px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
   transition: all var(--transition-fast);
 }
 
-.btn-dashboard:hover {
+.dashboard-file-row:hover {
   background-color: var(--bg-surface-hover);
   border-color: var(--color-primary-alpha-strong);
-  color: var(--text-primary);
   transform: translateX(4px);
 }
 
-.btn-dashboard i {
-  width: 16px;
-  height: 16px;
-  color: var(--color-primary);
+.dashboard-file-path {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
+
 

@@ -1766,6 +1766,47 @@ function renderHomepage() {
   const changedCount = activeFiles.filter(f => f.status !== 'unchanged' && !f.isUntracked).length;
   const untrackedCount = activeFiles.filter(f => f.isUntracked).length;
   
+  const changedFiles = activeFiles.filter(f => f.status !== 'unchanged' || f.isUntracked);
+
+  // Changed files list html
+  let changedFilesHtml = '';
+  if (changedFiles.length > 0) {
+    changedFilesHtml = `
+      <div class="dashboard-section">
+        <h3><i data-lucide="file-diff"></i> Changed Files</h3>
+        <div class="dashboard-changed-list">
+          ${changedFiles.map(f => {
+            let badgeClass = '';
+            let badgeText = '';
+            let titleText = '';
+            if (f.isUntracked) {
+              badgeClass = 'badge-untracked';
+              badgeText = '?';
+              titleText = 'Untracked';
+            } else {
+              badgeClass = getBadgeClass(f.status);
+              badgeText = f.status;
+              titleText = f.status === 'R' ? 'Renamed' : f.status === 'A' ? 'Added' : f.status === 'D' ? 'Deleted' : 'Modified';
+            }
+            return `
+              <div class="dashboard-file-row" onclick="handleFileClick('${escapeJsString(f.path)}')" title="Click to view diff for ${escapeHtml(f.path)}">
+                <span class="file-badge ${badgeClass}" title="${titleText}">${badgeText}</span>
+                <span class="dashboard-file-path">${escapeHtml(f.path)}</span>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    `;
+  } else {
+    changedFilesHtml = `
+      <div class="dashboard-section">
+        <h3><i data-lucide="file-diff"></i> Changed Files</h3>
+        <p class="empty-dashboard-text">No changed files in this comparison scope.</p>
+      </div>
+    `;
+  }
+
   // Commits list html
   let commitsHtml = '';
   if (state.commits.length > 0) {
@@ -1861,21 +1902,7 @@ function renderHomepage() {
 
       <div class="dashboard-columns">
         ${commitsHtml}
-        
-        <div class="dashboard-section">
-          <h3><i data-lucide="zap"></i> Quick Actions</h3>
-          <div class="dashboard-actions">
-            <button class="btn btn-dashboard" onclick="setQuickCompare('HEAD', '__live__')">
-              <i data-lucide="play"></i> Compare HEAD vs Live State
-            </button>
-            <button class="btn btn-dashboard" onclick="setQuickCompare('HEAD~1', 'HEAD')">
-              <i data-lucide="history"></i> Compare Last Commit (HEAD~1 vs HEAD)
-            </button>
-            <button class="btn btn-dashboard" onclick="resetCompareScope()">
-              <i data-lucide="refresh-cw"></i> Reset Scope (HEAD vs Live)
-            </button>
-          </div>
-        </div>
+        ${changedFilesHtml}
       </div>
     </div>
   `;
