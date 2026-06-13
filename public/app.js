@@ -1950,24 +1950,52 @@ async function fetchAndRenderDag() {
       return;
     }
 
+    const maxCols = Math.max(...dagData.map(row => row.graph.length), 1);
+    const colWidth = 14;
+    const graphWidth = maxCols * colWidth;
+    
+    const TRACK_COLORS = [
+      '#8b5cf6', // Violet
+      '#10b981', // Emerald
+      '#f59e0b', // Amber
+      '#3b82f6', // Blue
+      '#ef4444', // Red
+      '#06b6d4', // Cyan
+      '#ec4899', // Pink
+      '#a855f7'  // Purple
+    ];
+
     dagContainer.innerHTML = dagData.map(row => {
-      const graphChars = row.graph.split('').map(char => {
+      const isConnector = !row.commit;
+      const rowHeight = isConnector ? 18 : 26;
+      const cy = rowHeight / 2;
+      
+      let shapes = [];
+      row.graph.split('').forEach((char, c) => {
+        const x = c * colWidth + colWidth / 2;
+        const color = TRACK_COLORS[c % TRACK_COLORS.length];
+        
         if (char === '*') {
+          shapes.push(`<line x1="${x}" y1="0" x2="${x}" y2="${rowHeight}" stroke="${color}" stroke-width="2" />`);
           const hashVal = row.commit ? row.commit.hash : '';
           const shortHash = row.commit ? row.commit.shortHash : '';
-          return `<span class="dag-char-node" onclick="setCustomTargetRef('${hashVal}')" title="Set commit ${shortHash} as target ref"></span>`;
+          shapes.push(`<circle cx="${x}" cy="${cy}" r="5" fill="var(--bg-surface)" stroke="${color}" stroke-width="3" class="dag-node-dot" onclick="setCustomTargetRef('${hashVal}')" title="Set commit ${shortHash} as target ref" style="cursor: pointer;" />`);
         } else if (char === '|') {
-          return `<span class="dag-char-vertical">|</span>`;
-        } else if (char === '\\') {
-          return `<span class="dag-char-diagonal-right">\\</span>`;
+          shapes.push(`<line x1="${x}" y1="0" x2="${x}" y2="${rowHeight}" stroke="${color}" stroke-width="2" />`);
         } else if (char === '/') {
-          return `<span class="dag-char-diagonal-left">/</span>`;
+          shapes.push(`<line x1="${(c + 1) * colWidth + colWidth / 2}" y1="0" x2="${c * colWidth + colWidth / 2}" y2="${rowHeight}" stroke="${color}" stroke-width="2" />`);
+        } else if (char === '\\') {
+          shapes.push(`<line x1="${(c - 1) * colWidth + colWidth / 2}" y1="0" x2="${c * colWidth + colWidth / 2}" y2="${rowHeight}" stroke="${color}" stroke-width="2" />`);
         } else if (char === '_') {
-          return `<span class="dag-char-horizontal">_</span>`;
-        } else {
-          return char;
+          shapes.push(`<line x1="${c * colWidth}" y1="${cy}" x2="${(c + 1) * colWidth}" y2="${cy}" stroke="${color}" stroke-width="2" />`);
         }
-      }).join('');
+      });
+
+      const svgHtml = `
+        <svg width="${graphWidth}" height="${rowHeight}" class="dag-svg-slice">
+          ${shapes.join('')}
+        </svg>
+      `;
 
       let commitHtml = '';
       if (row.commit) {
@@ -1981,12 +2009,11 @@ async function fetchAndRenderDag() {
         `;
       }
 
-      const isConnector = !row.commit;
       const rowClass = isConnector ? 'dag-row dag-row-connector' : 'dag-row';
 
       return `
         <div class="${rowClass}">
-          <div class="dag-graph-col">${graphChars}</div>
+          <div class="dag-graph-col">${svgHtml}</div>
           ${commitHtml}
         </div>
       `;

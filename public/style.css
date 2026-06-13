@@ -2142,47 +2142,27 @@ body {
 
 .dag-graph-col {
   user-select: none;
-  font-weight: bold;
-  letter-spacing: 0.05em;
   display: flex;
   align-items: center;
   height: 100%;
+  flex-shrink: 0;
 }
 
-/* Colorize characters */
-.dag-char-node {
-  color: var(--color-primary);
-  position: relative;
-  font-size: 14px;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 100%;
-  font-family: var(--font-sans);
+.dag-svg-slice {
+  display: block;
 }
 
-.dag-char-node::before {
-  content: '●';
-  text-shadow: 0 0 8px var(--color-primary);
+.dag-node-dot {
+  transition: r var(--transition-fast), stroke-width var(--transition-fast), fill var(--transition-fast), stroke var(--transition-fast);
 }
 
-.dag-char-vertical {
-  color: var(--text-muted);
+.dag-node-dot:hover {
+  r: 7;
+  stroke-width: 3px;
+  stroke: #ffffff !important;
+  fill: var(--color-primary) !important;
 }
 
-.dag-char-diagonal-right {
-  color: #10b981;
-}
-
-.dag-char-diagonal-left {
-  color: #3b82f6;
-}
-
-.dag-char-horizontal {
-  color: #f59e0b;
-}
 
 .dag-commit-col {
   display: flex;
