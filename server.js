@@ -10,8 +10,11 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Global state in-memory config
 let currentRepoPath = '';
+const NO_INDEXING = process.argv.includes('--no-indexing');
+let globalSymbolsMap = {}; // symbolName -> [{ filePath, line, type }]
+let indexingStatus = NO_INDEXING ? 'disabled' : 'idle';
+let indexedFilesCount = 0;
 
 // Helper to run git commands
 function runGit(args, repoPath) {
@@ -91,6 +94,7 @@ app.post('/api/config', async (req, res) => {
 
   if (isRepo) {
     currentRepoPath = resolvedPath;
+    startIndexing(currentRepoPath);
     let currentBranch = '';
     try {
       currentBranch = (await runGit(['branch', '--show-current'], currentRepoPath)).trim();
@@ -905,6 +909,188 @@ app.get('/api/file-history', async (req, res) => {
   }
 });
 
+// Helper to parse symbols from content based on file extension
+function extractSymbolsFromFile(content, filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  const lines = content.split('\n');
+  const symbols = [];
+
+  const addSymbol = (name, lineNum, type) => {
+    symbols.push({ name: name.trim(), line: lineNum, type });
+  };
+
+  lines.forEach((lineText, idx) => {
+    const lineNum = idx + 1;
+    const trimmed = lineText.trim();
+    if (!trimmed) return;
+
+    if (['.js', '.jsx', '.ts', '.tsx'].includes(ext)) {
+      const classMatch = trimmed.match(/^(?:export\s+)?(class\s+[A-Z]\w*)/) || trimmed.match(/^(?:export\s+)?(?:default\s+)?class\s+(\w+)/);
+      if (classMatch) {
+        addSymbol(classMatch[1].replace('class ', ''), lineNum, 'class');
+        return;
+      }
+      const funcMatch = trimmed.match(/^(?:export\s+)?(?:async\s+)?function\s+(\w+)\s*\(/);
+      if (funcMatch) {
+        addSymbol(funcMatch[1], lineNum, 'function');
+        return;
+      }
+      const arrowMatch = trimmed.match(/^(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s*)?\([^)]*\)\s*=>/);
+      if (arrowMatch) {
+        addSymbol(arrowMatch[1], lineNum, 'function');
+        return;
+      }
+      const methodMatch = trimmed.match(/^(?:async\s+)?(\w+)\s*\([^)]*\)\s*\{/);
+      if (methodMatch) {
+        if (!['if', 'for', 'while', 'switch', 'catch', 'function'].includes(methodMatch[1])) {
+          addSymbol(methodMatch[1], lineNum, 'method');
+          return;
+        }
+      }
+    } else if (ext === '.py') {
+      const classMatch = trimmed.match(/^class\s+(\w+)/);
+      if (classMatch) {
+        addSymbol(classMatch[1], lineNum, 'class');
+        return;
+      }
+      const defMatch = trimmed.match(/^def\s+(\w+)/);
+      if (defMatch) {
+        addSymbol(defMatch[1], lineNum, 'function');
+        return;
+      }
+    } else if (ext === '.go') {
+      const funcMatch = trimmed.match(/^func\s+(\w+)\s*\(/);
+      if (funcMatch) {
+        addSymbol(funcMatch[1], lineNum, 'function');
+        return;
+      }
+      const methodMatch = trimmed.match(/^func\s*\([^)]+\)\s+(\w+)\s*\(/);
+      if (methodMatch) {
+        addSymbol(methodMatch[1], lineNum, 'method');
+        return;
+      }
+    } else if (ext === '.rs') {
+      const structMatch = trimmed.match(/^(?:pub\s+)?struct\s+(\w+)/);
+      if (structMatch) {
+        addSymbol(structMatch[1], lineNum, 'class');
+        return;
+      }
+      const enumMatch = trimmed.match(/^(?:pub\s+)?enum\s+(\w+)/);
+      if (enumMatch) {
+        addSymbol(enumMatch[1], lineNum, 'class');
+        return;
+      }
+      const fnMatch = trimmed.match(/^(?:pub\s+)?(?:const\s+)?(?:async\s+)?fn\s+(\w+)/);
+      if (fnMatch) {
+        addSymbol(fnMatch[1], lineNum, 'function');
+        return;
+      }
+      const implMatch = trimmed.match(/^impl(?:\s+<\w+>)?\s+(\w+)/);
+      if (implMatch) {
+        addSymbol(`impl ${implMatch[1]}`, lineNum, 'interface');
+        return;
+      }
+    } else if (['.c', '.cpp', '.h', '.hpp', '.cc'].includes(ext)) {
+      const classMatch = trimmed.match(/^(?:class|struct)\s+(\w+)/);
+      if (classMatch) {
+        addSymbol(classMatch[1], lineNum, 'class');
+        return;
+      }
+      const fnMatch = trimmed.match(/^(?:static\s+)?(?:inline\s+)?(?:\w+::)?(\w+)\s*\([^)]*\)\s*\{/);
+      if (fnMatch) {
+        if (!['if', 'for', 'while', 'switch', 'catch'].includes(fnMatch[1])) {
+          addSymbol(fnMatch[1], lineNum, 'function');
+          return;
+        }
+      }
+    } else if (['.md', '.markdown'].includes(ext)) {
+      const headingMatch = lineText.match(/^(#{1,6})\s+(.+)$/);
+      if (headingMatch) {
+        const depth = headingMatch[1].length;
+        const title = headingMatch[2];
+        const indent = '  '.repeat(depth - 1);
+        addSymbol(`${indent}${title}`, lineNum, `h${depth}`);
+        return;
+      }
+    }
+  });
+
+  return symbols;
+}
+
+// Background symbol indexer
+function startIndexing(repoPath) {
+  if (NO_INDEXING) {
+    indexingStatus = 'disabled';
+    globalSymbolsMap = {};
+    indexedFilesCount = 0;
+    return;
+  }
+
+  indexingStatus = 'indexing';
+  indexedFilesCount = 0;
+  globalSymbolsMap = {};
+
+  setTimeout(async () => {
+    try {
+      console.log(`[Indexer] Starting background indexing for: ${repoPath}`);
+      const gitignoreMatcher = parseGitignore(repoPath);
+      
+      const allFiles = getFilesRecursive(repoPath, repoPath);
+      const supportedExtensions = ['.js', '.jsx', '.ts', '.tsx', '.py', '.go', '.rs', '.c', '.cpp', '.h', '.hpp', '.cc', '.md', '.markdown'];
+      const filesToIndex = allFiles.filter(file => {
+        const fullPath = path.join(repoPath, file);
+        if (gitignoreMatcher(fullPath)) return false;
+        
+        const ext = '.' + file.split('.').pop().toLowerCase();
+        return supportedExtensions.includes(ext);
+      });
+
+      console.log(`[Indexer] Found ${filesToIndex.length} files to index.`);
+
+      const tempSymbolsMap = {};
+      const CHUNK_SIZE = 50;
+      
+      for (let i = 0; i < filesToIndex.length; i += CHUNK_SIZE) {
+        await new Promise(resolve => setTimeout(resolve, 10));
+
+        const chunk = filesToIndex.slice(i, i + CHUNK_SIZE);
+        for (const file of chunk) {
+          try {
+            const fullPath = path.join(repoPath, file);
+            if (!fs.existsSync(fullPath)) continue;
+            
+            const content = fs.readFileSync(fullPath, 'utf8');
+            const fileSymbols = extractSymbolsFromFile(content, file);
+            
+            fileSymbols.forEach(sym => {
+              if (!tempSymbolsMap[sym.name]) {
+                tempSymbolsMap[sym.name] = [];
+              }
+              tempSymbolsMap[sym.name].push({
+                filePath: file,
+                line: sym.line,
+                type: sym.type
+              });
+            });
+
+            indexedFilesCount++;
+          } catch (e) {
+            console.error(`[Indexer] Failed to index file ${file}:`, e.message);
+          }
+        }
+      }
+
+      globalSymbolsMap = tempSymbolsMap;
+      indexingStatus = 'ready';
+      console.log(`[Indexer] Indexing completed. Indexed ${indexedFilesCount} files.`);
+    } catch (err) {
+      console.error('[Indexer] Indexing failed:', err.message);
+      indexingStatus = 'failed';
+    }
+  }, 100);
+}
+
 // 7. Symbol Extractor (Outline) Endpoint
 app.get('/api/symbols', async (req, res) => {
   const { path: filePath, ref } = req.query;
@@ -927,113 +1113,38 @@ app.get('/api/symbols', async (req, res) => {
       }
     }
 
-    const ext = path.extname(filePath).toLowerCase();
-    const lines = content.split('\n');
-    const symbols = [];
-
-    const addSymbol = (name, lineNum, type) => {
-      symbols.push({ name: name.trim(), line: lineNum, type });
-    };
-
-    lines.forEach((lineText, idx) => {
-      const lineNum = idx + 1;
-      const trimmed = lineText.trim();
-      if (!trimmed) return;
-
-      if (['.js', '.jsx', '.ts', '.tsx'].includes(ext)) {
-        const classMatch = trimmed.match(/^(?:export\s+)?(class\s+[A-Z]\w*)/) || trimmed.match(/^(?:export\s+)?(?:default\s+)?class\s+(\w+)/);
-        if (classMatch) {
-          addSymbol(classMatch[1].replace('class ', ''), lineNum, 'class');
-          return;
-        }
-        const funcMatch = trimmed.match(/^(?:export\s+)?(?:async\s+)?function\s+(\w+)\s*\(/);
-        if (funcMatch) {
-          addSymbol(funcMatch[1], lineNum, 'function');
-          return;
-        }
-        const arrowMatch = trimmed.match(/^(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s*)?\([^)]*\)\s*=>/);
-        if (arrowMatch) {
-          addSymbol(arrowMatch[1], lineNum, 'function');
-          return;
-        }
-        const methodMatch = trimmed.match(/^(?:async\s+)?(\w+)\s*\([^)]*\)\s*\{/);
-        if (methodMatch) {
-          if (!['if', 'for', 'while', 'switch', 'catch', 'function'].includes(methodMatch[1])) {
-            addSymbol(methodMatch[1], lineNum, 'method');
-            return;
-          }
-        }
-      } else if (ext === '.py') {
-        const classMatch = trimmed.match(/^class\s+(\w+)/);
-        if (classMatch) {
-          addSymbol(classMatch[1], lineNum, 'class');
-          return;
-        }
-        const defMatch = trimmed.match(/^def\s+(\w+)/);
-        if (defMatch) {
-          addSymbol(defMatch[1], lineNum, 'function');
-          return;
-        }
-      } else if (ext === '.go') {
-        const funcMatch = trimmed.match(/^func\s+(\w+)\s*\(/);
-        if (funcMatch) {
-          addSymbol(funcMatch[1], lineNum, 'function');
-          return;
-        }
-        const methodMatch = trimmed.match(/^func\s*\([^)]+\)\s+(\w+)\s*\(/);
-        if (methodMatch) {
-          addSymbol(methodMatch[1], lineNum, 'method');
-          return;
-        }
-      } else if (ext === '.rs') {
-        const structMatch = trimmed.match(/^(?:pub\s+)?struct\s+(\w+)/);
-        if (structMatch) {
-          addSymbol(structMatch[1], lineNum, 'class');
-          return;
-        }
-        const enumMatch = trimmed.match(/^(?:pub\s+)?enum\s+(\w+)/);
-        if (enumMatch) {
-          addSymbol(enumMatch[1], lineNum, 'class');
-          return;
-        }
-        const fnMatch = trimmed.match(/^(?:pub\s+)?(?:const\s+)?(?:async\s+)?fn\s+(\w+)/);
-        if (fnMatch) {
-          addSymbol(fnMatch[1], lineNum, 'function');
-          return;
-        }
-        const implMatch = trimmed.match(/^impl(?:\s+<\w+>)?\s+(\w+)/);
-        if (implMatch) {
-          addSymbol(`impl ${implMatch[1]}`, lineNum, 'interface');
-          return;
-        }
-      } else if (['.c', '.cpp', '.h', '.hpp', '.cc'].includes(ext)) {
-        const classMatch = trimmed.match(/^(?:class|struct)\s+(\w+)/);
-        if (classMatch) {
-          addSymbol(classMatch[1], lineNum, 'class');
-          return;
-        }
-        const fnMatch = trimmed.match(/^(?:static\s+)?(?:inline\s+)?(?:\w+::)?(\w+)\s*\([^)]*\)\s*\{/);
-        if (fnMatch) {
-          if (!['if', 'for', 'while', 'switch', 'catch'].includes(fnMatch[1])) {
-            addSymbol(fnMatch[1], lineNum, 'function');
-            return;
-          }
-        }
-      } else if (['.md', '.markdown'].includes(ext)) {
-        const headingMatch = lineText.match(/^(#{1,6})\s+(.+)$/);
-        if (headingMatch) {
-          const depth = headingMatch[1].length;
-          const title = headingMatch[2];
-          const indent = '  '.repeat(depth - 1);
-          addSymbol(`${indent}${title}`, lineNum, `h${depth}`);
-          return;
-        }
-      }
-    });
-
+    const symbols = extractSymbolsFromFile(content, filePath);
     res.json(symbols);
   } catch (err) {
     res.status(500).json({ error: 'Failed to extract symbols', details: err.message });
+  }
+});
+
+// 8. Indexer Endpoints
+app.get('/api/indexer/status', (req, res) => {
+  res.json({
+    status: indexingStatus,
+    count: indexedFilesCount
+  });
+});
+
+app.get('/api/indexer/symbols', (req, res) => {
+  if (NO_INDEXING) {
+    return res.status(400).json({ error: 'Indexing is disabled' });
+  }
+  res.json(globalSymbolsMap);
+});
+
+app.get('/api/indexer/resolve', (req, res) => {
+  const { name } = req.query;
+  if (NO_INDEXING || !name || indexingStatus !== 'ready') {
+    return res.json({ found: false });
+  }
+  const defs = globalSymbolsMap[name];
+  if (defs && defs.length > 0) {
+    res.json({ found: true, definitions: defs });
+  } else {
+    res.json({ found: false });
   }
 });
 

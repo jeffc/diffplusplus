@@ -105,6 +105,29 @@ Open your web browser and navigate to **`http://localhost:3000`**. In the reposi
 
 ---
 
+### Background Symbol Indexer & Large Repositories
+
+On startup or when loading a repository, `diff++` starts a background task to index all code symbol definitions (classes, functions, methods) across the repository. This enables **cross-file definition resolution** (meaning you can click on a function name in any file to go directly to its definition in another file!).
+
+For very large repositories, this indexer can consume CPU and memory. You can easily **disable repository-wide indexing** using the `--no-indexing` flag:
+
+#### Disabling Indexing (Local Setup)
+Run the server with the `--no-indexing` flag passed as an argument:
+```bash
+npm start -- --no-indexing
+```
+*(Or directly run `node server.js --no-indexing`)*
+
+#### Disabling Indexing (Docker Setup)
+Pass the `--no-indexing` argument to the container startup:
+```bash
+docker run -d --name diff-viewer -p 3000:3000 -v /path/to/your/local/git-repo:/repo diff-viewer node server.js --no-indexing
+```
+
+If indexing is disabled, the UI will display a **`INDEXING DISABLED`** status badge, and all other features (including local file symbols extraction, code outlines, and blame views) will continue to work perfectly.
+
+---
+
 ## User Manual
 
 ### 1. Load a Repository

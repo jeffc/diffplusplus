@@ -245,6 +245,34 @@ body {
   border: 1px solid var(--status-del-border);
 }
 
+.status-indexing {
+  background-color: rgba(245, 158, 11, 0.08);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+
+.status-ready {
+  background-color: rgba(139, 92, 246, 0.08);
+  color: #a78bfa;
+  border: 1px solid rgba(139, 92, 246, 0.25);
+}
+
+.status-disabled {
+  background-color: rgba(82, 82, 91, 0.08);
+  color: var(--text-muted);
+  border: 1px solid rgba(82, 82, 91, 0.15);
+}
+
+.status-failed {
+  background-color: var(--status-del-bg);
+  color: var(--status-del);
+  border: 1px solid var(--status-del-border);
+}
+
+.spinner-icon {
+  animation: spin 1.5s linear infinite;
+}
+
 .compare-controls {
   display: flex;
   align-items: center;

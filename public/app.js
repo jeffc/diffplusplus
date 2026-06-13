@@ -28,7 +28,9 @@ const state = {
   
   sseSource: null,
   isOutlineOpen: false,
-  symbols: []
+  symbols: [],
+  globalRepositorySymbols: null,
+  pendingScrollLine: null
 };
 
 // DOM Elements
@@ -222,6 +224,115 @@ function initApp() {
     fetchConfig();
   }
 }
+
+// ==========================================================================
+// Background Indexing & Symbol Resolution
+// ==========================================================================
+let indexerPollInterval = null;
+
+async function checkIndexerStatus() {
+  if (!state.isRepo) {
+    updateIndexerStatusUI('idle');
+    stopIndexerPolling();
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/indexer/status');
+    if (!res.ok) throw new Error('API error');
+    const data = await res.json();
+
+    updateIndexerStatusUI(data.status, data.count);
+
+    if (data.status === 'indexing') {
+      startIndexerPolling();
+    } else {
+      stopIndexerPolling();
+      // If ready and we haven't loaded repository-wide symbols yet, fetch them
+      if (data.status === 'ready' && !state.globalRepositorySymbols) {
+        const symRes = await fetch('/api/indexer/symbols');
+        if (symRes.ok) {
+          state.globalRepositorySymbols = await symRes.json();
+          // Re-link symbols in the active panel now that we have global references
+          linkSymbolsInDom(document);
+        }
+      }
+    }
+  } catch (err) {
+    updateIndexerStatusUI('failed');
+    stopIndexerPolling();
+  }
+}
+
+function startIndexerPolling() {
+  if (indexerPollInterval) return;
+  indexerPollInterval = setInterval(checkIndexerStatus, 2000);
+}
+
+function stopIndexerPolling() {
+  if (indexerPollInterval) {
+    clearInterval(indexerPollInterval);
+    indexerPollInterval = null;
+  }
+}
+
+function updateIndexerStatusUI(status, count = 0) {
+  const badge = document.getElementById('indexerStatusBadge');
+  if (!badge) return;
+
+  if (!state.isRepo || status === 'idle') {
+    badge.style.display = 'none';
+    return;
+  }
+
+  badge.style.display = 'inline-flex';
+  badge.className = 'status-badge'; // reset class list
+
+  let iconHtml = '';
+  let text = '';
+
+  switch (status) {
+    case 'indexing':
+      badge.classList.add('status-indexing');
+      iconHtml = '<i data-lucide="loader" class="spinner-icon"></i>';
+      text = 'Indexing symbols...';
+      break;
+    case 'ready':
+      badge.classList.add('status-ready');
+      iconHtml = '<i data-lucide="check-circle-2"></i>';
+      text = `Symbols Ready (${count} files)`;
+      break;
+    case 'disabled':
+      badge.classList.add('status-disabled');
+      iconHtml = '<i data-lucide="ban"></i>';
+      text = 'Indexing disabled';
+      break;
+    case 'failed':
+      badge.classList.add('status-failed');
+      iconHtml = '<i data-lucide="circle-alert"></i>';
+      text = 'Indexing failed';
+      break;
+    default:
+      badge.style.display = 'none';
+      return;
+  }
+
+  badge.innerHTML = `${iconHtml} ${text}`;
+  lucide.createIcons();
+}
+
+window.navigateToRemoteSymbol = (filePath, lineNum) => {
+  // Try to find if this file is in state.files (changed list)
+  const file = state.files.find(f => f.path === filePath);
+  if (file) {
+    state.pendingScrollLine = lineNum;
+    selectFile(file);
+  } else {
+    // Unchanged file or not in status list -> open it as unchanged
+    state.pendingScrollLine = lineNum;
+    selectFile({ path: filePath, status: 'unchanged', oldPath: null });
+  }
+};
 
 // ==========================================================================
 // API Calls & State Mutations
@@ -420,6 +531,7 @@ async function fetchDiffList(initialLoad = false, shouldReloadDetails = true) {
       }
     }
 
+    checkIndexerStatus();
     syncStateToUrl();
   } catch (err) {
     showToast('Error', 'Failed to retrieve changed files list', 'info');
@@ -2042,20 +2154,48 @@ async function fetchAndRenderDag() {
 }
 
 function linkSymbolsInDom(container) {
-  if (!state.symbols || state.symbols.length === 0) return;
+  // We need at least local symbols or global symbols to proceed
+  const hasLocalSymbols = state.symbols && state.symbols.length > 0;
+  const hasGlobalSymbols = state.globalRepositorySymbols && Object.keys(state.globalRepositorySymbols).length > 0;
+  if (!hasLocalSymbols && !hasGlobalSymbols) return;
 
-  // Build map of symbol name to definition line
-  const symbolMap = new Map();
-  state.symbols.forEach(sym => {
-    if (sym.line && ['function', 'method', 'class'].includes(sym.type)) {
-      symbolMap.set(sym.name, sym.line);
+  // Build merged map of symbol name -> { filePath, line, type, isLocal }
+  const mergedSymbols = new Map();
+
+  // 1. Populate with global symbols first (cross-file definitions)
+  if (hasGlobalSymbols) {
+    for (const name in state.globalRepositorySymbols) {
+      const defs = state.globalRepositorySymbols[name];
+      if (defs && defs.length > 0) {
+        // Take first definition
+        mergedSymbols.set(name, {
+          filePath: defs[0].filePath,
+          line: defs[0].line,
+          type: defs[0].type,
+          isLocal: false
+        });
+      }
     }
-  });
+  }
 
-  if (symbolMap.size === 0) return;
+  // 2. Overwrite with local symbols (local definitions take priority)
+  if (hasLocalSymbols) {
+    state.symbols.forEach(sym => {
+      if (sym.line && ['function', 'method', 'class'].includes(sym.type)) {
+        mergedSymbols.set(sym.name, {
+          filePath: state.selectedFile.path,
+          line: sym.line,
+          type: sym.type,
+          isLocal: true
+        });
+      }
+    });
+  }
+
+  if (mergedSymbols.size === 0) return;
 
   // Escape symbol names to build a safe regular expression
-  const escapedNames = Array.from(symbolMap.keys())
+  const escapedNames = Array.from(mergedSymbols.keys())
     .map(name => name.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'))
     .filter(name => name.length > 0);
 
@@ -2072,7 +2212,7 @@ function linkSymbolsInDom(container) {
     while (walker.nextNode()) {
       const node = walker.currentNode;
       
-      // Skip text nodes inside links, comments, or string literals to preventdubious matches
+      // Skip text nodes inside links, comments, or string literals to prevent dubious matches
       if (node.parentElement) {
         const parent = node.parentElement;
         if (parent.classList.contains('code-symbol-link') ||
@@ -2106,17 +2246,27 @@ function linkSymbolsInDom(container) {
         }
         
         // Add clickable link element
-        const lineNum = symbolMap.get(matchText);
+        const meta = mergedSymbols.get(matchText);
         const link = document.createElement('a');
         link.className = 'code-symbol-link';
         link.href = '#';
         link.textContent = matchText;
-        link.title = `Go to definition of ${matchText} (Line ${lineNum})`;
         
-        link.addEventListener('click', (e) => {
-          e.preventDefault();
-          scrollToSymbolLine(lineNum);
-        });
+        if (meta.isLocal) {
+          link.title = `Go to definition of ${matchText} (Line ${meta.line})`;
+          link.addEventListener('click', (e) => {
+            e.preventDefault();
+            scrollToSymbolLine(meta.line);
+          });
+        } else {
+          // Display short path in title
+          const fileBasename = meta.filePath.split('/').pop();
+          link.title = `Go to definition of ${matchText} in ${fileBasename} (Line ${meta.line})`;
+          link.addEventListener('click', (e) => {
+            e.preventDefault();
+            navigateToRemoteSymbol(meta.filePath, meta.line);
+          });
+        }
         
         fragment.appendChild(link);
         lastIdx = regex.lastIndex;
@@ -2177,6 +2327,14 @@ async function fetchAndRenderOutline() {
     }
     
     linkSymbolsInDom(document);
+
+    if (state.pendingScrollLine) {
+      const line = state.pendingScrollLine;
+      state.pendingScrollLine = null;
+      setTimeout(() => {
+        scrollToSymbolLine(line);
+      }, 100);
+    }
   } catch (err) {
     state.symbols = [];
     if (state.isOutlineOpen) {
