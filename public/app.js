@@ -629,7 +629,7 @@ function selectFile(file, shouldSync = true) {
   state.selectedFile = file;
   
   // Update selection in list UI
-  const items = filesListContainer.querySelectorAll('.file-item-wrapper');
+  const items = filesListContainer.querySelectorAll('.tree-file-row');
   items.forEach(el => el.classList.remove('active'));
   
   const activeWrapper = document.getElementById(`file-wrapper-${file.path.replace(/[^a-zA-Z0-9]/g, '_')}`);
