@@ -137,7 +137,14 @@
             </button>
           </div>
 
-          <!-- Mode Toggle (Diff vs Blame vs Render) -->
+          <!-- Outline Toggle -->
+          <div class="toggle-group" id="outlineToggleGroup">
+            <button class="toggle-btn" id="outlineToggleBtn" title="Toggle Code Outline Sidebar">
+              <i data-lucide="list-tree"></i> Outline
+            </button>
+          </div>
+
+          <!-- Mode Toggle (Diff vs Blame vs Render vs History) -->
           <div class="toggle-group">
             <button class="toggle-btn active" id="modeDiffBtn">
               <i data-lucide="code"></i> Diff
@@ -148,47 +155,69 @@
             <button class="toggle-btn" id="modeRenderBtn">
               <i data-lucide="eye"></i> Render
             </button>
+            <button class="toggle-btn" id="modeHistoryBtn" title="View Commit History for this file">
+              <i data-lucide="calendar"></i> History
+            </button>
           </div>
         </div>
       </div>
 
-      <!-- Main Viewer Area -->
-      <div class="viewer-body" id="viewerBody">
-        <!-- Default Empty State -->
-        <div class="empty-state" id="mainEmptyState">
-          <div class="empty-state-card">
-            <div class="empty-icon-container">
-              <i data-lucide="git-branch"></i>
-            </div>
-            <h3>diff++ Studio</h3>
-            <p>Select a file from the sidebar to inspect detailed git modifications or view full code line history using Git Blame.</p>
-            <div class="empty-tips">
-              <div class="tip-item">
-                <i data-lucide="zap"></i>
-                <span>Comparing with <strong>Live State</strong> will automatically monitor file changes.</span>
+      <!-- Main Viewer Wrapper for outline sidebar layout -->
+      <div class="viewer-container" id="viewerContainer">
+        <!-- Main Viewer Area -->
+        <div class="viewer-body" id="viewerBody">
+          <!-- Default Empty State -->
+          <div class="empty-state" id="mainEmptyState">
+            <div class="empty-state-card">
+              <div class="empty-icon-container">
+                <i data-lucide="git-branch"></i>
               </div>
-              <div class="tip-item">
-                <i data-lucide="eye"></i>
-                <span>Toggle between <strong>Unified</strong> and <strong>Split</strong> diff layouts.</span>
+              <h3>diff++ Studio</h3>
+              <p>Select a file from the sidebar to inspect detailed git modifications or view full code line history using Git Blame.</p>
+              <div class="empty-tips">
+                <div class="tip-item">
+                  <i data-lucide="zap"></i>
+                  <span>Comparing with <strong>Live State</strong> will automatically monitor file changes.</span>
+                </div>
+                <div class="tip-item">
+                  <i data-lucide="eye"></i>
+                  <span>Toggle between <strong>Unified</strong> and <strong>Split</strong> diff layouts.</span>
+                </div>
               </div>
             </div>
           </div>
+
+          <!-- Diff View Panel -->
+          <div class="diff-viewer-panel" id="diffViewerPanel" style="display: none;">
+            <!-- Loaded dynamically -->
+          </div>
+
+          <!-- Blame View Panel -->
+          <div class="blame-viewer-panel" id="blameViewerPanel" style="display: none;">
+            <!-- Loaded dynamically -->
+          </div>
+
+          <!-- Render View Panel -->
+          <div class="render-viewer-panel" id="renderViewerPanel" style="display: none;">
+            <!-- Loaded dynamically -->
+          </div>
+
+          <!-- History View Panel -->
+          <div class="history-viewer-panel" id="historyViewerPanel" style="display: none;">
+            <!-- Loaded dynamically -->
+          </div>
         </div>
 
-        <!-- Diff View Panel -->
-        <div class="diff-viewer-panel" id="diffViewerPanel" style="display: none;">
-          <!-- Loaded dynamically -->
-        </div>
-
-        <!-- Blame View Panel -->
-        <div class="blame-viewer-panel" id="blameViewerPanel" style="display: none;">
-          <!-- Loaded dynamically -->
-        </div>
-
-        <!-- Render View Panel -->
-        <div class="render-viewer-panel" id="renderViewerPanel" style="display: none;">
-          <!-- Loaded dynamically -->
-        </div>
+        <!-- Code Outline Sidebar Panel -->
+        <aside class="code-outline-panel" id="codeOutlinePanel" style="display: none;">
+          <div class="outline-header">
+            <h3><i data-lucide="list-tree"></i> Outline</h3>
+            <button class="outline-close-btn" id="outlineCloseBtn" title="Close Outline">&times;</button>
+          </div>
+          <div class="outline-symbols-container" id="outlineSymbolsContainer">
+            <!-- Symbols loaded dynamically -->
+          </div>
+        </aside>
       </div>
     </section>
   </main>

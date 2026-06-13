@@ -834,6 +834,210 @@ app.get('/api/watch', (req, res) => {
   });
 });
 
+// 5. Visual DAG Commit Graph Endpoint
+app.get('/api/dag', async (req, res) => {
+  if (!currentRepoPath) {
+    return res.status(400).json({ error: 'No repository configured' });
+  }
+  try {
+    const dagOutput = await runGit(
+      ['log', '--graph', '--color=never', '--pretty=format:COMMIT:%H|%h|%an|%at|%s', '-n', '40'],
+      currentRepoPath
+    );
+    const lines = dagOutput.split('\n');
+    const result = lines.filter(Boolean).map(line => {
+      const commitIndex = line.indexOf('COMMIT:');
+      if (commitIndex !== -1) {
+        const graph = line.substring(0, commitIndex);
+        const commitData = line.substring(commitIndex + 7);
+        const [hash, shortHash, author, timestamp, subject] = commitData.split('|');
+        return {
+          graph,
+          commit: {
+            hash,
+            shortHash,
+            author,
+            date: new Date(parseInt(timestamp) * 1000).toISOString(),
+            subject
+          }
+        };
+      } else {
+        return {
+          graph: line,
+          commit: null
+        };
+      }
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to retrieve DAG commit history', details: err.stderr || err.message });
+  }
+});
+
+// 6. File History Endpoint
+app.get('/api/file-history', async (req, res) => {
+  const { path: filePath } = req.query;
+  if (!currentRepoPath) {
+    return res.status(400).json({ error: 'No repository configured' });
+  }
+  if (!filePath) {
+    return res.status(400).json({ error: 'filePath parameter is required' });
+  }
+  try {
+    const historyOutput = await runGit(
+      ['log', '--follow', '--pretty=format:%H|%h|%an|%at|%s', '--', filePath],
+      currentRepoPath
+    );
+    const lines = historyOutput.split('\n').filter(Boolean);
+    const result = lines.map(line => {
+      const [hash, shortHash, author, timestamp, subject] = line.split('|');
+      return {
+        hash,
+        shortHash,
+        author,
+        date: new Date(parseInt(timestamp) * 1000).toISOString(),
+        subject
+      };
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to retrieve file history', details: err.stderr || err.message });
+  }
+});
+
+// 7. Symbol Extractor (Outline) Endpoint
+app.get('/api/symbols', async (req, res) => {
+  const { path: filePath, ref } = req.query;
+  if (!currentRepoPath) {
+    return res.status(400).json({ error: 'No repository configured' });
+  }
+  if (!filePath) {
+    return res.status(400).json({ error: 'filePath parameter is required' });
+  }
+  try {
+    let content = '';
+    if (ref && ref !== '__live__') {
+      content = await runGit(['show', `${ref}:${filePath}`], currentRepoPath);
+    } else {
+      const fullPath = path.join(currentRepoPath, filePath);
+      if (fs.existsSync(fullPath)) {
+        content = fs.readFileSync(fullPath, 'utf8');
+      } else {
+        return res.json([]);
+      }
+    }
+
+    const ext = path.extname(filePath).toLowerCase();
+    const lines = content.split('\n');
+    const symbols = [];
+
+    const addSymbol = (name, lineNum, type) => {
+      symbols.push({ name: name.trim(), line: lineNum, type });
+    };
+
+    lines.forEach((lineText, idx) => {
+      const lineNum = idx + 1;
+      const trimmed = lineText.trim();
+      if (!trimmed) return;
+
+      if (['.js', '.jsx', '.ts', '.tsx'].includes(ext)) {
+        const classMatch = trimmed.match(/^(?:export\s+)?(class\s+[A-Z]\w*)/) || trimmed.match(/^(?:export\s+)?(?:default\s+)?class\s+(\w+)/);
+        if (classMatch) {
+          addSymbol(classMatch[1].replace('class ', ''), lineNum, 'class');
+          return;
+        }
+        const funcMatch = trimmed.match(/^(?:export\s+)?(?:async\s+)?function\s+(\w+)\s*\(/);
+        if (funcMatch) {
+          addSymbol(funcMatch[1], lineNum, 'function');
+          return;
+        }
+        const arrowMatch = trimmed.match(/^(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s*)?\([^)]*\)\s*=>/);
+        if (arrowMatch) {
+          addSymbol(arrowMatch[1], lineNum, 'function');
+          return;
+        }
+        const methodMatch = trimmed.match(/^(?:async\s+)?(\w+)\s*\([^)]*\)\s*\{/);
+        if (methodMatch) {
+          if (!['if', 'for', 'while', 'switch', 'catch', 'function'].includes(methodMatch[1])) {
+            addSymbol(methodMatch[1], lineNum, 'method');
+            return;
+          }
+        }
+      } else if (ext === '.py') {
+        const classMatch = trimmed.match(/^class\s+(\w+)/);
+        if (classMatch) {
+          addSymbol(classMatch[1], lineNum, 'class');
+          return;
+        }
+        const defMatch = trimmed.match(/^def\s+(\w+)/);
+        if (defMatch) {
+          addSymbol(defMatch[1], lineNum, 'function');
+          return;
+        }
+      } else if (ext === '.go') {
+        const funcMatch = trimmed.match(/^func\s+(\w+)\s*\(/);
+        if (funcMatch) {
+          addSymbol(funcMatch[1], lineNum, 'function');
+          return;
+        }
+        const methodMatch = trimmed.match(/^func\s*\([^)]+\)\s+(\w+)\s*\(/);
+        if (methodMatch) {
+          addSymbol(methodMatch[1], lineNum, 'method');
+          return;
+        }
+      } else if (ext === '.rs') {
+        const structMatch = trimmed.match(/^(?:pub\s+)?struct\s+(\w+)/);
+        if (structMatch) {
+          addSymbol(structMatch[1], lineNum, 'class');
+          return;
+        }
+        const enumMatch = trimmed.match(/^(?:pub\s+)?enum\s+(\w+)/);
+        if (enumMatch) {
+          addSymbol(enumMatch[1], lineNum, 'class');
+          return;
+        }
+        const fnMatch = trimmed.match(/^(?:pub\s+)?(?:const\s+)?(?:async\s+)?fn\s+(\w+)/);
+        if (fnMatch) {
+          addSymbol(fnMatch[1], lineNum, 'function');
+          return;
+        }
+        const implMatch = trimmed.match(/^impl(?:\s+<\w+>)?\s+(\w+)/);
+        if (implMatch) {
+          addSymbol(`impl ${implMatch[1]}`, lineNum, 'interface');
+          return;
+        }
+      } else if (['.c', '.cpp', '.h', '.hpp', '.cc'].includes(ext)) {
+        const classMatch = trimmed.match(/^(?:class|struct)\s+(\w+)/);
+        if (classMatch) {
+          addSymbol(classMatch[1], lineNum, 'class');
+          return;
+        }
+        const fnMatch = trimmed.match(/^(?:static\s+)?(?:inline\s+)?(?:\w+::)?(\w+)\s*\([^)]*\)\s*\{/);
+        if (fnMatch) {
+          if (!['if', 'for', 'while', 'switch', 'catch'].includes(fnMatch[1])) {
+            addSymbol(fnMatch[1], lineNum, 'function');
+            return;
+          }
+        }
+      } else if (['.md', '.markdown'].includes(ext)) {
+        const headingMatch = lineText.match(/^(#{1,6})\s+(.+)$/);
+        if (headingMatch) {
+          const depth = headingMatch[1].length;
+          const title = headingMatch[2];
+          const indent = '  '.repeat(depth - 1);
+          addSymbol(`${indent}${title}`, lineNum, `h${depth}`);
+          return;
+        }
+      }
+    });
+
+    res.json(symbols);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to extract symbols', details: err.message });
+  }
+});
+
+
 app.listen(PORT, () => {
   console.log(`diff++ running on http://localhost:${PORT}`);
 });

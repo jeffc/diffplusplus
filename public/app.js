@@ -26,7 +26,9 @@ const state = {
   expandedSummaryFiles: new Set(), // Set of paths expanded in summary list
   searchTerm: '',
   
-  sseSource: null
+  sseSource: null,
+  isOutlineOpen: false,
+  symbols: []
 };
 
 // DOM Elements
@@ -48,6 +50,8 @@ const fileSearchInput = document.getElementById('fileSearchInput');
 const onlyChangedFilter = document.getElementById('onlyChangedFilter');
 const sidebarStats = document.getElementById('sidebarStats');
 const filesListContainer = document.getElementById('filesListContainer');
+const onlyChangedToggle = document.getElementById('onlyChangedToggle');
+const filesChangedStat = document.getElementById('filesChangedStat');
 
 const detailHeader = document.getElementById('detailHeader');
 const detailFileBadge = document.getElementById('detailFileBadge');
@@ -62,11 +66,18 @@ const fullContextToggleGroup = document.getElementById('fullContextToggleGroup')
 const modeDiffBtn = document.getElementById('modeDiffBtn');
 const modeBlameBtn = document.getElementById('modeBlameBtn');
 const modeRenderBtn = document.getElementById('modeRenderBtn');
+const modeHistoryBtn = document.getElementById('modeHistoryBtn');
 
 const mainEmptyState = document.getElementById('mainEmptyState');
 const diffViewerPanel = document.getElementById('diffViewerPanel');
 const blameViewerPanel = document.getElementById('blameViewerPanel');
 const renderViewerPanel = document.getElementById('renderViewerPanel');
+const historyViewerPanel = document.getElementById('historyViewerPanel');
+const codeOutlinePanel = document.getElementById('codeOutlinePanel');
+const outlineToggleBtn = document.getElementById('outlineToggleBtn');
+const outlineToggleGroup = document.getElementById('outlineToggleGroup');
+const outlineCloseBtn = document.getElementById('outlineCloseBtn');
+const outlineSymbolsContainer = document.getElementById('outlineSymbolsContainer');
 const toastContainer = document.getElementById('toastContainer');
 
 // ==========================================================================
@@ -175,6 +186,20 @@ function initApp() {
   modeDiffBtn.addEventListener('click', () => setViewMode('diff'));
   modeBlameBtn.addEventListener('click', () => setViewMode('blame'));
   modeRenderBtn.addEventListener('click', () => setViewMode('render'));
+  modeHistoryBtn.addEventListener('click', () => setViewMode('history'));
+
+  outlineToggleBtn.addEventListener('click', () => {
+    state.isOutlineOpen = !state.isOutlineOpen;
+    outlineToggleBtn.classList.toggle('active', state.isOutlineOpen);
+    fetchAndRenderOutline();
+  });
+
+  outlineCloseBtn.addEventListener('click', () => {
+    state.isOutlineOpen = false;
+    outlineToggleBtn.classList.remove('active');
+    codeOutlinePanel.style.display = 'none';
+  });
+
 
   // File search
   fileSearchInput.addEventListener('input', (e) => {
@@ -677,6 +702,8 @@ function hideDetailView() {
   diffViewerPanel.style.display = 'none';
   blameViewerPanel.style.display = 'none';
   renderViewerPanel.style.display = 'none';
+  historyViewerPanel.style.display = 'none';
+  codeOutlinePanel.style.display = 'none';
   mainEmptyState.style.display = 'flex';
   renderHomepage();
   syncStateToUrl();
@@ -750,6 +777,10 @@ async function loadDetailedContent() {
     }
     
     renderDetailedContent();
+  }
+  
+  if (state.selectedFile) {
+    fetchAndRenderOutline();
   }
 }
 
@@ -854,8 +885,9 @@ function renderUnifiedDiff(diffData, targetElement, hideHunkHeaders = false) {
       const newLineVal = line.newLine !== null ? line.newLine : '';
       const marker = line.type === 'add' ? '+' : line.type === 'delete' ? '-' : ' ';
       
+      const dataLineAttr = newLineVal !== '' ? `data-line="${newLineVal}"` : '';
       html += `
-        <tr class="diff-row ${typeClass}">
+        <tr class="diff-row ${typeClass}" ${dataLineAttr}>
           <td class="diff-gutter">${oldLineVal}</td>
           <td class="diff-gutter">${newLineVal}</td>
           <td class="diff-marker">${marker}</td>
@@ -886,7 +918,9 @@ function renderSplitDiff(diffData, targetElement, hideHunkHeaders = false) {
     const alignedRows = alignHunkLines(hunk.lines);
 
     alignedRows.forEach(row => {
-      html += '<tr class="split-diff-row">';
+      const dataLineAttr = (row.right && row.right.newLine !== null) ? `data-line="${row.right.newLine}"` : '';
+      html += `<tr class="split-diff-row" ${dataLineAttr}>`;
+
 
       // Left Column (Old version / Deletions)
       if (row.left) {
@@ -1030,7 +1064,7 @@ function renderDetailedBlame(blameData) {
         </div>
         <div class="blame-lines">
           ${group.lines.map(line => `
-            <div class="blame-line-row">
+            <div class="blame-line-row" data-line="${line.resultLine}">
               <div class="blame-line-num">${line.resultLine}</div>
               <div class="blame-code">${highlightCodeLine(line.content, state.selectedFile.path)}</div>
             </div>
@@ -1116,7 +1150,17 @@ async function renderDetailedContent() {
     if (!res.ok) throw new Error('Failed to load file contents');
     const text = await res.text();
     
-    const highlighted = highlightCodeLine(text, filePath);
+    const lines = text.split('\n');
+    const linesHtml = lines.map((line, idx) => {
+      const lineNum = idx + 1;
+      const highlightedLine = highlightCodeLine(line, filePath);
+      return `
+        <div class="fallback-line-row" data-line="${lineNum}">
+          <span class="fallback-line-num">${lineNum}</span>
+          <span class="fallback-code">${highlightedLine}</span>
+        </div>
+      `;
+    }).join('');
     
     renderViewerPanel.innerHTML = `
       <div class="rendered-fallback-container">
@@ -1124,7 +1168,7 @@ async function renderDetailedContent() {
           <i data-lucide="info"></i>
           <span>Interactive render mode not supported for this file type. Showing as source code.</span>
         </div>
-        <pre class="rendered-code-pre"><code class="hljs">${highlighted}</code></pre>
+        <div class="fallback-code-table">${linesHtml}</div>
       </div>
     `;
     lucide.createIcons();
@@ -1268,11 +1312,23 @@ function setViewMode(mode) {
   modeDiffBtn.classList.toggle('active', mode === 'diff');
   modeBlameBtn.classList.toggle('active', mode === 'blame');
   modeRenderBtn.classList.toggle('active', mode === 'render');
+  modeHistoryBtn.classList.toggle('active', mode === 'history');
+  
   if (fullContextToggleGroup) {
     fullContextToggleGroup.style.display = mode === 'diff' ? 'flex' : 'none';
   }
+  
+  // Hide outline panel if switching away from content views or if history is active
+  if (mode === 'history' || !state.selectedFile) {
+    codeOutlinePanel.style.display = 'none';
+  }
+  
   if (state.selectedFile) {
-    loadDetailedContent();
+    if (mode === 'history') {
+      loadFileHistory();
+    } else {
+      loadDetailedContent();
+    }
   }
   syncStateToUrl();
 }
@@ -1807,41 +1863,6 @@ function renderHomepage() {
     `;
   }
 
-  // Commits list html
-  let commitsHtml = '';
-  if (state.commits.length > 0) {
-    const recent = state.commits.slice(0, 5);
-    commitsHtml = `
-      <div class="dashboard-section">
-        <h3><i data-lucide="history"></i> Recent Commit History</h3>
-        <div class="dashboard-timeline">
-          ${recent.map(c => {
-            const commitDate = new Date(c.date).toLocaleDateString();
-            return `
-              <div class="timeline-item">
-                <div class="timeline-meta">
-                  <span class="commit-sha" onclick="setCustomTargetRef('${c.hash}')" title="Set as target ref">${c.shortHash}</span>
-                  <span class="commit-date">${commitDate}</span>
-                </div>
-                <div class="timeline-body">
-                  <div class="commit-subject">${escapeHtml(c.subject)}</div>
-                  <div class="commit-author">by ${escapeHtml(c.author)}</div>
-                </div>
-              </div>
-            `;
-          }).join('')}
-        </div>
-      </div>
-    `;
-  } else {
-    commitsHtml = `
-      <div class="dashboard-section">
-        <h3><i data-lucide="history"></i> Recent Commit History</h3>
-        <p class="empty-dashboard-text">No commits found in history.</p>
-      </div>
-    `;
-  }
-
   mainEmptyState.innerHTML = `
     <div class="dashboard-container">
       <div class="dashboard-header">
@@ -1901,10 +1922,252 @@ function renderHomepage() {
       </div>
 
       <div class="dashboard-columns">
-        ${commitsHtml}
+        <div class="dashboard-section" id="dagGraphSection">
+          <h3><i data-lucide="history"></i> Commit History Graph</h3>
+          <div class="dag-container" id="dagContainer">
+            <div class="loader-container" style="padding: 20px 0;"><div class="spinner"></div><div>Loading Git graph...</div></div>
+          </div>
+        </div>
         ${changedFilesHtml}
       </div>
     </div>
   `;
   lucide.createIcons();
+  fetchAndRenderDag();
 }
+
+async function fetchAndRenderDag() {
+  const dagContainer = document.getElementById('dagContainer');
+  if (!dagContainer) return;
+
+  try {
+    const res = await fetch('/api/dag');
+    if (!res.ok) throw new Error('Failed to fetch commit graph');
+    const dagData = await res.json();
+    
+    if (!dagData || dagData.length === 0) {
+      dagContainer.innerHTML = '<p class="empty-dashboard-text">No commits found in history.</p>';
+      return;
+    }
+
+    dagContainer.innerHTML = dagData.map(row => {
+      const graphChars = row.graph.split('').map(char => {
+        if (char === '*') {
+          const hashVal = row.commit ? row.commit.hash : '';
+          const shortHash = row.commit ? row.commit.shortHash : '';
+          return `<span class="dag-char-node" onclick="setCustomTargetRef('${hashVal}')" title="Set commit ${shortHash} as target ref"></span>`;
+        } else if (char === '|') {
+          return `<span class="dag-char-vertical">|</span>`;
+        } else if (char === '\\') {
+          return `<span class="dag-char-diagonal-right">\\</span>`;
+        } else if (char === '/') {
+          return `<span class="dag-char-diagonal-left">/</span>`;
+        } else if (char === '_') {
+          return `<span class="dag-char-horizontal">_</span>`;
+        } else {
+          return char;
+        }
+      }).join('');
+
+      let commitHtml = '';
+      if (row.commit) {
+        const commitDate = new Date(row.commit.date).toLocaleDateString();
+        commitHtml = `
+          <div class="dag-commit-col">
+            <span class="dag-commit-sha" onclick="setCustomTargetRef('${row.commit.hash}')" title="Set as target ref">${row.commit.shortHash}</span>
+            <span class="dag-commit-subject" title="${escapeHtml(row.commit.subject)}">${escapeHtml(row.commit.subject)}</span>
+            <span class="dag-commit-meta">${escapeHtml(row.commit.author)} on ${commitDate}</span>
+          </div>
+        `;
+      }
+
+      const isConnector = !row.commit;
+      const rowClass = isConnector ? 'dag-row dag-row-connector' : 'dag-row';
+
+      return `
+        <div class="${rowClass}">
+          <div class="dag-graph-col">${graphChars}</div>
+          ${commitHtml}
+        </div>
+      `;
+    }).join('');
+
+  } catch (err) {
+    dagContainer.innerHTML = `<p style="color: var(--status-del); font-size: 12px; padding: 12px;">Failed to load graph: ${err.message}</p>`;
+  }
+}
+
+async function fetchAndRenderOutline() {
+  if (!state.selectedFile) {
+    outlineToggleGroup.style.display = 'none';
+    codeOutlinePanel.style.display = 'none';
+    return;
+  }
+
+  const filePath = state.selectedFile.path;
+  const ext = '.' + filePath.split('.').pop().toLowerCase();
+  const supportedExtensions = ['.js', '.jsx', '.ts', '.tsx', '.py', '.go', '.rs', '.c', '.cpp', '.h', '.hpp', '.cc', '.md', '.markdown'];
+
+  if (!supportedExtensions.includes(ext)) {
+    outlineToggleGroup.style.display = 'none';
+    codeOutlinePanel.style.display = 'none';
+    return;
+  }
+
+  outlineToggleGroup.style.display = 'flex';
+  
+  if (state.isOutlineOpen) {
+    codeOutlinePanel.style.display = 'flex';
+    outlineToggleBtn.classList.add('active');
+  } else {
+    codeOutlinePanel.style.display = 'none';
+    outlineToggleBtn.classList.remove('active');
+    return;
+  }
+
+  outlineSymbolsContainer.innerHTML = '<div class="loader-container" style="padding: 10px 0;"><div class="spinner" style="width: 16px; height: 16px; margin: 0 auto;"></div></div>';
+
+  try {
+    const res = await fetch(`/api/symbols?path=${encodeURIComponent(filePath)}&ref=${encodeURIComponent(state.targetRef)}`);
+    if (!res.ok) throw new Error('Failed to fetch symbols');
+    const symbols = await res.json();
+    state.symbols = symbols;
+    renderSymbolsList();
+  } catch (err) {
+    outlineSymbolsContainer.innerHTML = `<div style="color: var(--status-del); font-size: 11px; padding: 10px;">Outline failed: ${err.message}</div>`;
+  }
+}
+
+function renderSymbolsList() {
+  if (!state.symbols || state.symbols.length === 0) {
+    outlineSymbolsContainer.innerHTML = '<div style="color: var(--text-muted); font-size: 11px; padding: 10px; text-align: center;">No symbols found in this file.</div>';
+    return;
+  }
+
+  outlineSymbolsContainer.innerHTML = state.symbols.map(s => {
+    let iconClass = '';
+    let iconText = '';
+    
+    if (s.type === 'class') {
+      iconClass = 'symbol-class';
+      iconText = 'C';
+    } else if (s.type === 'function') {
+      iconClass = 'symbol-function';
+      iconText = 'F';
+    } else if (s.type === 'method') {
+      iconClass = 'symbol-method';
+      iconText = 'M';
+    } else if (s.type.startsWith('h')) {
+      iconClass = 'symbol-heading';
+      iconText = '#';
+    } else {
+      iconClass = 'symbol-class';
+      iconText = 'S';
+    }
+
+    return `
+      <div class="outline-row" onclick="scrollToSymbolLine(${s.line})">
+        <span class="outline-symbol-icon ${iconClass}">${iconText}</span>
+        <span class="outline-symbol-name" title="${escapeHtml(s.name)}">${escapeHtml(s.name)}</span>
+        <span class="outline-symbol-line">L${s.line}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+window.scrollToSymbolLine = (lineNum) => {
+  const activePanelId = state.viewMode === 'diff' ? 'diffViewerPanel' 
+                      : state.viewMode === 'blame' ? 'blameViewerPanel'
+                      : 'renderViewerPanel';
+  
+  const panel = document.getElementById(activePanelId);
+  if (!panel) return;
+
+  const targetEl = panel.querySelector(`[data-line="${lineNum}"]`);
+  if (targetEl) {
+    targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    
+    targetEl.classList.remove('line-flash-highlight');
+    void targetEl.offsetWidth; // trigger reflow
+    targetEl.classList.add('line-flash-highlight');
+  }
+};
+
+async function loadFileHistory() {
+  if (!state.selectedFile) return;
+
+  diffViewerPanel.style.display = 'none';
+  blameViewerPanel.style.display = 'none';
+  renderViewerPanel.style.display = 'none';
+  historyViewerPanel.style.display = 'block';
+  diffFormatToggleGroup.style.visibility = 'hidden';
+  if (fullContextToggleGroup) {
+    fullContextToggleGroup.style.display = 'none';
+  }
+
+  historyViewerPanel.innerHTML = '<div class="loader-container"><div class="spinner"></div><div>Loading file history...</div></div>';
+
+  try {
+    const res = await fetch(`/api/file-history?path=${encodeURIComponent(state.selectedFile.path)}`);
+    if (!res.ok) throw new Error('Failed to load file history');
+    
+    const historyData = await res.json();
+    renderFileHistory(historyData);
+  } catch (err) {
+    historyViewerPanel.innerHTML = `<div class="loader-container" style="color: var(--status-del)"><i data-lucide="circle-alert"></i> Failed to retrieve history: ${err.message}</div>`;
+    lucide.createIcons();
+  }
+}
+
+function renderFileHistory(historyData) {
+  if (!historyData || historyData.length === 0) {
+    historyViewerPanel.innerHTML = '<div class="loader-container">No commit history found for this file.</div>';
+    return;
+  }
+
+  historyViewerPanel.innerHTML = `
+    <div class="history-list">
+      ${historyData.map(c => {
+        const commitDate = new Date(c.date).toLocaleString();
+        return `
+          <div class="history-item">
+            <div class="history-meta">
+              <div class="history-subject">${escapeHtml(c.subject)}</div>
+              <div class="history-author">
+                by <strong>${escapeHtml(c.author)}</strong>
+                <span>on ${commitDate}</span>
+              </div>
+            </div>
+            <div class="history-actions">
+              <span class="commit-sha" onclick="setCustomTargetRef('${c.hash}')" title="Set comparison target to this commit">${c.shortHash}</span>
+              <button class="btn btn-xs btn-primary" onclick="viewFileAtCommit('${escapeJsString(c.hash)}')" title="View file content at this commit">
+                <i data-lucide="eye"></i> View Content
+              </button>
+              <button class="btn btn-xs" onclick="viewFileCommitDiff('${escapeJsString(c.hash)}')" title="View changes introduced in this commit">
+                <i data-lucide="split"></i> View Diff
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+  lucide.createIcons();
+}
+
+window.viewFileAtCommit = (hash) => {
+  state.baseRef = hash;
+  state.targetRef = hash;
+  state.viewMode = 'diff';
+  populateDropdowns();
+  handleRefsChange();
+};
+
+window.viewFileCommitDiff = (hash) => {
+  state.baseRef = `${hash}~1`;
+  state.targetRef = hash;
+  state.viewMode = 'diff';
+  populateDropdowns();
+  handleRefsChange();
+};
+
