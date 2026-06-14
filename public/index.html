@@ -134,13 +134,26 @@
             </button>
           </div>
 
-          <!-- Diff Format Toggle (Unified vs Split) -->
+          <!-- Diff Format Toggle (Unified vs Split vs Single) -->
           <div class="toggle-group" id="diffFormatToggleGroup">
             <button class="toggle-btn active" id="unifiedFormatBtn" title="Unified Diff View">
               <i data-lucide="stretch-horizontal"></i> Unified
             </button>
             <button class="toggle-btn" id="splitFormatBtn" title="Split/Side-by-Side Diff View">
               <i data-lucide="columns-2"></i> Split
+            </button>
+            <button class="toggle-btn" id="singleFormatBtn" title="Single File View (Base or Target)">
+              <i data-lucide="file-text"></i> Single
+            </button>
+          </div>
+
+          <!-- Single Version Selector -->
+          <div class="toggle-group" id="singleVersionToggleGroup" style="display: none; margin-left: 8px;">
+            <button class="toggle-btn" id="singleBaseBtn" title="Show Base (Old) Version">
+              Base
+            </button>
+            <button class="toggle-btn" id="singleTargetBtn" title="Show Target (New) Version">
+              Target
             </button>
           </div>
 

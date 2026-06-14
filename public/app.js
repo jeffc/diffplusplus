@@ -19,7 +19,8 @@ const state = {
   baseRef: 'HEAD',
   targetRef: '__live__',
   
-  diffLayout: 'unified',   // 'unified' | 'split'
+  diffLayout: 'unified',   // 'unified' | 'split' | 'single'
+  singleVersion: 'target',  // 'base' | 'target'
   viewMode: 'diff',        // 'diff' | 'blame'
   fullContext: false,      // toggle showing entire file in diff view
   confirmedBinaryFiles: new Set(), // set of binary file paths confirmed by user to render
@@ -63,6 +64,10 @@ const detailFileRename = document.getElementById('detailFileRename');
 
 const unifiedFormatBtn = document.getElementById('unifiedFormatBtn');
 const splitFormatBtn = document.getElementById('splitFormatBtn');
+const singleFormatBtn = document.getElementById('singleFormatBtn');
+const singleVersionToggleGroup = document.getElementById('singleVersionToggleGroup');
+const singleBaseBtn = document.getElementById('singleBaseBtn');
+const singleTargetBtn = document.getElementById('singleTargetBtn');
 const diffFormatToggleGroup = document.getElementById('diffFormatToggleGroup');
 const hunksContextBtn = document.getElementById('hunksContextBtn');
 const fullContextBtn = document.getElementById('fullContextBtn');
@@ -186,6 +191,9 @@ function initApp() {
   // Layout & Mode toggle listeners
   unifiedFormatBtn.addEventListener('click', () => setDiffLayout('unified'));
   splitFormatBtn.addEventListener('click', () => setDiffLayout('split'));
+  singleFormatBtn.addEventListener('click', () => setDiffLayout('single'));
+  singleBaseBtn.addEventListener('click', () => setSingleVersion('base'));
+  singleTargetBtn.addEventListener('click', () => setSingleVersion('target'));
   hunksContextBtn.addEventListener('click', () => setFullContext(false));
   fullContextBtn.addEventListener('click', () => setFullContext(true));
   modeDiffBtn.addEventListener('click', () => setViewMode('diff'));
@@ -326,6 +334,7 @@ async function loadRepoData(initialLoad = false) {
       const urlMode = params.get('mode');
       const urlFullContext = params.get('fullContext');
       const urlViewAll = params.get('viewAll');
+      const urlSingleVersion = params.get('singleVersion');
 
       if (urlBase) state.baseRef = urlBase;
       else state.baseRef = state.currentBranch || 'HEAD';
@@ -345,11 +354,28 @@ async function loadRepoData(initialLoad = false) {
       } else {
         state.viewAllChanges = false;
       }
+      if (urlSingleVersion) {
+        state.singleVersion = urlSingleVersion;
+      } else {
+        state.singleVersion = 'target';
+      }
 
       // Sync toggles in UI
       if (urlLayout) {
         unifiedFormatBtn.classList.toggle('active', state.diffLayout === 'unified');
         splitFormatBtn.classList.toggle('active', state.diffLayout === 'split');
+        if (singleFormatBtn) {
+          singleFormatBtn.classList.toggle('active', state.diffLayout === 'single');
+        }
+      }
+      if (singleVersionToggleGroup) {
+        singleVersionToggleGroup.style.display = (state.diffLayout === 'single' && state.viewMode === 'diff') ? 'flex' : 'none';
+      }
+      if (singleBaseBtn) {
+        singleBaseBtn.classList.toggle('active', state.singleVersion === 'base');
+      }
+      if (singleTargetBtn) {
+        singleTargetBtn.classList.toggle('active', state.singleVersion === 'target');
       }
       if (urlMode) {
         modeDiffBtn.classList.toggle('active', state.viewMode === 'diff');
@@ -434,12 +460,17 @@ async function fetchDiffList(initialLoad = false, shouldReloadDetails = true) {
       const stillExists = state.files.find(f => f.path === state.selectedFile.path);
       if (stillExists) {
         state.selectedFile = stillExists;
-        if (shouldReloadDetails) {
-          loadDetailedContent();
-        }
-      } else if (state.viewMode !== 'blame') {
-        hideDetailView();
-        showToast('Info', 'Selected file has no differences anymore', 'info');
+      } else {
+        state.selectedFile = {
+          path: state.selectedFile.path,
+          status: 'unchanged',
+          oldPath: null,
+          isUntracked: false
+        };
+      }
+      updateDetailHeader(state.selectedFile);
+      if (shouldReloadDetails) {
+        loadDetailedContent();
       }
     } else {
       renderHomepage(shouldReloadDetails);
@@ -692,6 +723,31 @@ function expandParentFolders(filePath) {
   }
 }
 
+function updateDetailHeader(file) {
+  if (!file) return;
+  if (file.isUntracked) {
+    detailFileBadge.className = 'file-status-badge badge-untracked';
+    detailFileBadge.innerText = 'UNTRACKED';
+    detailFileBadge.title = 'Untracked';
+  } else if (file.status === 'unchanged') {
+    detailFileBadge.className = 'file-status-badge badge-unchanged';
+    detailFileBadge.innerText = 'UNCHANGED';
+    detailFileBadge.title = 'Unchanged';
+  } else {
+    detailFileBadge.className = `file-status-badge ${getBadgeClass(file.status)}`;
+    detailFileBadge.innerText = file.status === 'R' ? 'RENAMED' : file.status === 'A' ? 'ADDED' : file.status === 'D' ? 'DELETED' : 'MODIFIED';
+    detailFileBadge.title = file.status === 'R' ? 'Renamed' : file.status === 'A' ? 'Added' : file.status === 'D' ? 'Deleted' : 'Modified';
+  }
+  detailFilePath.innerText = file.path;
+  
+  if (file.status === 'R' && file.oldPath) {
+    detailFileRename.innerText = ` (renamed from ${file.oldPath})`;
+    detailFileRename.style.display = 'inline';
+  } else {
+    detailFileRename.style.display = 'none';
+  }
+}
+
 function selectFile(file, shouldSync = true) {
   state.selectedFile = file;
   state.viewAllChanges = false;
@@ -715,27 +771,7 @@ function selectFile(file, shouldSync = true) {
   mainEmptyState.style.display = 'none';
 
   // Populate header details
-  if (file.isUntracked) {
-    detailFileBadge.className = 'file-status-badge badge-untracked';
-    detailFileBadge.innerText = 'UNTRACKED';
-    detailFileBadge.title = 'Untracked';
-  } else if (file.status === 'unchanged') {
-    detailFileBadge.className = 'file-status-badge badge-unchanged';
-    detailFileBadge.innerText = 'UNCHANGED';
-    detailFileBadge.title = 'Unchanged';
-  } else {
-    detailFileBadge.className = `file-status-badge ${getBadgeClass(file.status)}`;
-    detailFileBadge.innerText = file.status === 'R' ? 'RENAMED' : file.status === 'A' ? 'ADDED' : file.status === 'D' ? 'DELETED' : 'MODIFIED';
-    detailFileBadge.title = file.status === 'R' ? 'Renamed' : file.status === 'A' ? 'Added' : file.status === 'D' ? 'Deleted' : 'Modified';
-  }
-  detailFilePath.innerText = file.path;
-  
-  if (file.status === 'R' && file.oldPath) {
-    detailFileRename.innerText = ` (renamed from ${file.oldPath})`;
-    detailFileRename.style.display = 'inline';
-  } else {
-    detailFileRename.style.display = 'none';
-  }
+  updateDetailHeader(file);
 
   loadDetailedContent();
 
@@ -768,8 +804,12 @@ async function loadDetailedContent() {
     blameViewerPanel.style.display = 'none';
     renderViewerPanel.style.display = 'none';
     diffFormatToggleGroup.style.visibility = 'visible';
+    const isUnchanged = state.selectedFile && state.selectedFile.status === 'unchanged';
     if (fullContextToggleGroup) {
-      fullContextToggleGroup.style.display = 'flex';
+      fullContextToggleGroup.style.display = isUnchanged ? 'none' : 'flex';
+    }
+    if (singleVersionToggleGroup) {
+      singleVersionToggleGroup.style.display = (state.diffLayout === 'single' && !isUnchanged) ? 'flex' : 'none';
     }
     
     const isSameFile = state.selectedFile && (state.selectedFile.path === state.loadedFilePath);
@@ -790,7 +830,7 @@ async function loadDetailedContent() {
       if (state.selectedFile.oldPath) {
         params.append('oldFilePath', state.selectedFile.oldPath);
       }
-      if (state.fullContext) {
+      if (state.fullContext || state.selectedFile.status === 'unchanged') {
         params.append('fullContext', 'true');
       }
 
@@ -925,19 +965,23 @@ function renderDetailedDiff(diffData) {
     return;
   }
 
+  const hideHeaders = !!diffData.isUnchangedFile;
   if (state.diffLayout === 'unified') {
-    renderUnifiedDiff(diffData, diffViewerPanel, state.fullContext);
-  } else {
-    renderSplitDiff(diffData, diffViewerPanel, state.fullContext);
+    renderUnifiedDiff(diffData, diffViewerPanel, hideHeaders ? true : state.fullContext);
+  } else if (state.diffLayout === 'split') {
+    renderSplitDiff(diffData, diffViewerPanel, hideHeaders ? true : state.fullContext);
+  } else if (state.diffLayout === 'single') {
+    renderSingleDiff(diffData, diffViewerPanel, hideHeaders ? true : state.fullContext);
   }
 }
 
 function renderUnifiedDiff(diffData, targetElement, hideHunkHeaders = false) {
-  let html = '<table class="diff-table">';
+  const isUnchanged = !!diffData.isUnchangedFile;
+  let html = `<table class="diff-table ${isUnchanged ? 'diff-table-unchanged' : ''}">`;
   
   diffData.hunks.forEach(hunk => {
     // Render Hunk header
-    if (!hideHunkHeaders) {
+    if (!hideHunkHeaders && !isUnchanged) {
       html += `
         <tr class="diff-row row-hunk">
           <td class="diff-gutter">...</td>
@@ -956,14 +1000,23 @@ function renderUnifiedDiff(diffData, targetElement, hideHunkHeaders = false) {
       const marker = line.type === 'add' ? '+' : line.type === 'delete' ? '-' : ' ';
       
       const dataLineAttr = newLineVal !== '' ? `data-line="${newLineVal}"` : '';
-      html += `
-        <tr class="diff-row ${typeClass}" ${dataLineAttr}>
-          <td class="diff-gutter">${oldLineVal}</td>
-          <td class="diff-gutter">${newLineVal}</td>
-          <td class="diff-marker">${marker}</td>
-          <td class="diff-code">${highlightCodeLine(line.content.substring(1), diffData.newPath || diffData.oldPath)}</td>
-        </tr>
-      `;
+      if (isUnchanged) {
+        html += `
+          <tr class="diff-row" ${dataLineAttr}>
+            <td class="diff-gutter">${newLineVal}</td>
+            <td class="diff-code">${highlightCodeLine(line.content.substring(1), diffData.newPath || diffData.oldPath)}</td>
+          </tr>
+        `;
+      } else {
+        html += `
+          <tr class="diff-row ${typeClass}" ${dataLineAttr}>
+            <td class="diff-gutter">${oldLineVal}</td>
+            <td class="diff-gutter">${newLineVal}</td>
+            <td class="diff-marker">${marker}</td>
+            <td class="diff-code">${highlightCodeLine(line.content.substring(1), diffData.newPath || diffData.oldPath)}</td>
+          </tr>
+        `;
+      }
     });
   });
 
@@ -972,6 +1025,12 @@ function renderUnifiedDiff(diffData, targetElement, hideHunkHeaders = false) {
 }
 
 function renderSplitDiff(diffData, targetElement, hideHunkHeaders = false) {
+  const isUnchanged = !!diffData.isUnchangedFile;
+  if (isUnchanged) {
+    renderUnifiedDiff(diffData, targetElement, hideHunkHeaders);
+    return;
+  }
+
   let html = '<table class="split-diff-table">';
 
   diffData.hunks.forEach(hunk => {
@@ -1049,6 +1108,49 @@ function renderSplitDiff(diffData, targetElement, hideHunkHeaders = false) {
       }
 
       html += '</tr>';
+    });
+  });
+
+  html += '</table>';
+  targetElement.innerHTML = html;
+}
+
+function renderSingleDiff(diffData, targetElement, hideHunkHeaders = false) {
+  const isUnchanged = !!diffData.isUnchangedFile;
+  const version = state.singleVersion || 'target';
+  
+  let html = `<table class="diff-table diff-table-single ${isUnchanged ? 'diff-table-unchanged' : ''}">`;
+
+  diffData.hunks.forEach(hunk => {
+    // Render Hunk header
+    if (!hideHunkHeaders && !isUnchanged) {
+      html += `
+        <tr class="diff-row row-hunk">
+          <td class="diff-gutter">...</td>
+          <td class="diff-code">${escapeHtml(hunk.header)}</td>
+        </tr>
+      `;
+    }
+
+    // Render lines
+    hunk.lines.forEach(line => {
+      // Filter lines based on active version
+      if (version === 'base') {
+        if (line.type === 'add') return; // Skip additions in base version
+      } else { // 'target'
+        if (line.type === 'delete') return; // Skip deletions in target version
+      }
+
+      const typeClass = line.type === 'add' ? 'row-add' : line.type === 'delete' ? 'row-delete' : line.type === 'info' ? 'row-info' : '';
+      const lineNum = version === 'base' ? (line.oldLine !== null ? line.oldLine : '') : (line.newLine !== null ? line.newLine : '');
+      const dataLineAttr = lineNum !== '' ? `data-line="${lineNum}"` : '';
+
+      html += `
+        <tr class="diff-row ${typeClass}" ${dataLineAttr}>
+          <td class="diff-gutter">${lineNum}</td>
+          <td class="diff-code">${highlightCodeLine(line.content.substring(1), diffData.newPath || diffData.oldPath)}</td>
+        </tr>
+      `;
     });
   });
 
@@ -1402,6 +1504,29 @@ function setDiffLayout(layout) {
   state.diffLayout = layout;
   unifiedFormatBtn.classList.toggle('active', layout === 'unified');
   splitFormatBtn.classList.toggle('active', layout === 'split');
+  if (singleFormatBtn) {
+    singleFormatBtn.classList.toggle('active', layout === 'single');
+  }
+  if (singleVersionToggleGroup) {
+    const isUnchanged = state.selectedFile && state.selectedFile.status === 'unchanged';
+    singleVersionToggleGroup.style.display = (layout === 'single' && state.viewMode === 'diff' && !isUnchanged) ? 'flex' : 'none';
+  }
+  if (state.selectedFile && state.viewMode === 'diff') {
+    loadDetailedContent();
+  } else if (state.viewAllChanges) {
+    loadAllChanges();
+  }
+  syncStateToUrl();
+}
+
+function setSingleVersion(version) {
+  state.singleVersion = version;
+  if (singleBaseBtn) {
+    singleBaseBtn.classList.toggle('active', version === 'base');
+  }
+  if (singleTargetBtn) {
+    singleTargetBtn.classList.toggle('active', version === 'target');
+  }
   if (state.selectedFile && state.viewMode === 'diff') {
     loadDetailedContent();
   } else if (state.viewAllChanges) {
@@ -1417,11 +1542,13 @@ function setViewMode(mode) {
   modeRenderBtn.classList.toggle('active', mode === 'render');
   modeHistoryBtn.classList.toggle('active', mode === 'history');
   
+  const isUnchanged = state.selectedFile && state.selectedFile.status === 'unchanged';
   if (fullContextToggleGroup) {
-    fullContextToggleGroup.style.display = mode === 'diff' ? 'flex' : 'none';
+    fullContextToggleGroup.style.display = (mode === 'diff' && !isUnchanged) ? 'flex' : 'none';
   }
-  
-
+  if (singleVersionToggleGroup) {
+    singleVersionToggleGroup.style.display = (mode === 'diff' && state.diffLayout === 'single' && !isUnchanged) ? 'flex' : 'none';
+  }
   
   if (state.selectedFile) {
     if (mode === 'history') {
@@ -1833,6 +1960,7 @@ function syncStateToUrl(push = true) {
   url.searchParams.set('file', (!state.viewAllChanges && state.selectedFile) ? state.selectedFile.path : '');
   url.searchParams.set('mode', state.viewMode || '');
   url.searchParams.set('layout', state.diffLayout || '');
+  url.searchParams.set('singleVersion', state.singleVersion || 'target');
   url.searchParams.set('fullContext', state.fullContext ? 'true' : 'false');
   url.searchParams.set('viewAll', state.viewAllChanges ? 'true' : 'false');
   
@@ -2360,6 +2488,7 @@ window.addEventListener('popstate', async () => {
       const urlLayout = params.get('layout') || 'unified';
       const urlFullContext = params.get('fullContext') === 'true';
       const urlViewAll = params.get('viewAll') === 'true';
+      const urlSingleVersion = params.get('singleVersion') || 'target';
 
       const refsChanged = (urlBase !== state.baseRef) || (urlTarget !== state.targetRef);
       
@@ -2369,11 +2498,25 @@ window.addEventListener('popstate', async () => {
       state.diffLayout = urlLayout;
       state.fullContext = urlFullContext;
       state.viewAllChanges = urlViewAll;
+      state.singleVersion = urlSingleVersion;
 
       populateDropdowns();
 
       unifiedFormatBtn.classList.toggle('active', state.diffLayout === 'unified');
       splitFormatBtn.classList.toggle('active', state.diffLayout === 'split');
+      if (singleFormatBtn) {
+        singleFormatBtn.classList.toggle('active', state.diffLayout === 'single');
+      }
+      if (singleVersionToggleGroup) {
+        const isUnchanged = state.selectedFile && state.selectedFile.status === 'unchanged';
+        singleVersionToggleGroup.style.display = (state.diffLayout === 'single' && state.viewMode === 'diff' && !isUnchanged) ? 'flex' : 'none';
+      }
+      if (singleBaseBtn) {
+        singleBaseBtn.classList.toggle('active', state.singleVersion === 'base');
+      }
+      if (singleTargetBtn) {
+        singleTargetBtn.classList.toggle('active', state.singleVersion === 'target');
+      }
       
       modeDiffBtn.classList.toggle('active', state.viewMode === 'diff');
       modeBlameBtn.classList.toggle('active', state.viewMode === 'blame');
@@ -2445,6 +2588,9 @@ async function loadAllChanges() {
   diffFormatToggleGroup.style.visibility = 'visible';
   if (fullContextToggleGroup) {
     fullContextToggleGroup.style.display = 'none';
+  }
+  if (singleVersionToggleGroup) {
+    singleVersionToggleGroup.style.display = (state.diffLayout === 'single') ? 'flex' : 'none';
   }
   if (modeToggleGroup) {
     modeToggleGroup.style.display = 'none';
@@ -2660,10 +2806,13 @@ function renderStackedFileDiff(diffData, bodyContainer, filePath) {
     return;
   }
 
+  const hideHunkHeaders = !!(diffData.isUnchangedFile || state.stackedFullContextFiles.has(filePath));
   if (state.diffLayout === 'unified') {
-    renderUnifiedDiff(diffData, bodyContainer, false);
-  } else {
-    renderSplitDiff(diffData, bodyContainer, false);
+    renderUnifiedDiff(diffData, bodyContainer, hideHunkHeaders);
+  } else if (state.diffLayout === 'split') {
+    renderSplitDiff(diffData, bodyContainer, hideHunkHeaders);
+  } else if (state.diffLayout === 'single') {
+    renderSingleDiff(diffData, bodyContainer, hideHunkHeaders);
   }
 }
 
