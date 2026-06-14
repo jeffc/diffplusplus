@@ -12,6 +12,7 @@ const state = {
   
   files: [],
   selectedFile: null,      // { path, status, oldPath }
+  loadedFilePath: '',      // path of the file currently rendered in detail view
   viewAllChanges: false,   // whether viewing all changes stacked
   stackedFullContextFiles: new Set(), // set of file paths in stacked view with full context enabled
   
@@ -269,12 +270,24 @@ async function loadRepoFromPath(pathVal, initialLoad = false) {
     state.currentBranch = data.currentBranch;
     
     updateRepoStatusUI();
-    
     state.confirmedBinaryFiles.clear();
     if (!initialLoad) {
       state.baseRef = 'HEAD';
       state.targetRef = '__live__';
       state.selectedFile = null;
+      state.viewAllChanges = false;
+      state.stackedFullContextFiles.clear();
+      state.loadedFilePath = '';
+
+      detailHeader.style.display = 'none';
+      diffViewerPanel.style.display = 'none';
+      blameViewerPanel.style.display = 'none';
+      renderViewerPanel.style.display = 'none';
+      historyViewerPanel.style.display = 'none';
+      allChangesPanel.style.display = 'none';
+      mainEmptyState.style.display = 'flex';
+      mainEmptyState.innerHTML = ''; // Force a full rebuild of the dashboard and commit graph
+
       state.expandedSummaryFiles.clear();
       state.expandedFolders.clear();
       state.onlyChanged = false;
@@ -378,6 +391,7 @@ function clearRepoData() {
   lucide.createIcons();
   sidebarStats.innerText = 'No files changed';
   state.stackedFullContextFiles.clear();
+  state.loadedFilePath = '';
   hideDetailView();
   stopFileWatch();
 }
@@ -412,7 +426,7 @@ async function fetchDiffList(initialLoad = false, shouldReloadDetails = true) {
           selectFile({ path: urlFile, status: 'M', oldPath: null }, false);
         }
       } else {
-        renderHomepage();
+        renderHomepage(true);
       }
     } else if (state.viewAllChanges) {
       loadAllChanges();
@@ -428,7 +442,7 @@ async function fetchDiffList(initialLoad = false, shouldReloadDetails = true) {
         showToast('Info', 'Selected file has no differences anymore', 'info');
       }
     } else {
-      renderHomepage();
+      renderHomepage(shouldReloadDetails);
     }
 
     syncStateToUrl();
@@ -734,6 +748,7 @@ function hideDetailView() {
   state.selectedFile = null;
   state.viewAllChanges = false;
   state.stackedFullContextFiles.clear();
+  state.loadedFilePath = '';
   detailHeader.style.display = 'none';
   diffViewerPanel.style.display = 'none';
   blameViewerPanel.style.display = 'none';
@@ -741,7 +756,7 @@ function hideDetailView() {
   historyViewerPanel.style.display = 'none';
   allChangesPanel.style.display = 'none';
   mainEmptyState.style.display = 'flex';
-  renderHomepage();
+  renderHomepage(true);
   syncStateToUrl();
 }
 
@@ -757,7 +772,13 @@ async function loadDetailedContent() {
       fullContextToggleGroup.style.display = 'flex';
     }
     
-    diffViewerPanel.innerHTML = '<div class="loader-container"><div class="spinner"></div><div>Loading diff...</div></div>';
+    const isSameFile = state.selectedFile && (state.selectedFile.path === state.loadedFilePath);
+    if (!isSameFile) {
+      state.loadedFilePath = '';
+      diffViewerPanel.innerHTML = '<div class="loader-container"><div class="spinner"></div><div>Loading diff...</div></div>';
+    } else {
+      showSubtleUpdateIndicator('detailHeader', true);
+    }
     
     try {
       const params = new URLSearchParams({
@@ -779,8 +800,11 @@ async function loadDetailedContent() {
       const diffData = await res.json();
       renderDetailedDiff(diffData);
     } catch (err) {
+      state.loadedFilePath = '';
       diffViewerPanel.innerHTML = `<div class="loader-container" style="color: var(--status-del)"><i data-lucide="circle-alert"></i> Failed to retrieve file diff: ${err.message}</div>`;
       lucide.createIcons();
+    } finally {
+      showSubtleUpdateIndicator('detailHeader', false);
     }
   } else if (state.viewMode === 'blame') {
     diffViewerPanel.style.display = 'none';
@@ -791,7 +815,15 @@ async function loadDetailedContent() {
       fullContextToggleGroup.style.display = 'none';
     }
     
-    blameViewerPanel.innerHTML = '<div class="loader-container"><div class="spinner"></div><div>Running git blame...</div></div>';
+    const isSameFile = state.selectedFile && (state.selectedFile.path === state.loadedFilePath);
+    const hasBlameTable = blameViewerPanel.querySelector('.blame-table') !== null;
+    
+    if (!isSameFile || !hasBlameTable) {
+      state.loadedFilePath = '';
+      blameViewerPanel.innerHTML = '<div class="loader-container"><div class="spinner"></div><div>Running git blame...</div></div>';
+    } else {
+      showSubtleUpdateIndicator('detailHeader', true);
+    }
 
     try {
       const res = await fetch(`/api/blame?path=${encodeURIComponent(state.selectedFile.path)}&ref=${encodeURIComponent(state.targetRef)}`);
@@ -800,8 +832,11 @@ async function loadDetailedContent() {
       const blameData = await res.json();
       renderDetailedBlame(blameData);
     } catch (err) {
+      state.loadedFilePath = '';
       blameViewerPanel.innerHTML = `<div class="loader-container" style="color: var(--status-del)"><i data-lucide="circle-alert"></i> Failed to retrieve blame data: ${err.message}</div>`;
       lucide.createIcons();
+    } finally {
+      showSubtleUpdateIndicator('detailHeader', false);
     }
   } else if (state.viewMode === 'render') {
     diffViewerPanel.style.display = 'none';
@@ -822,6 +857,7 @@ async function loadDetailedContent() {
 // Diff and Blame Custom Renderers
 // ==========================================================================
 function renderDetailedDiff(diffData) {
+  state.loadedFilePath = diffData.newPath || diffData.oldPath || '';
   if (diffData.isUnchangedFile && diffData.content !== undefined) {
     const lines = diffData.content.split('\n');
     diffData.hunks = [{
@@ -1057,6 +1093,7 @@ function alignHunkLines(lines) {
 
 // Blame renderer
 function renderDetailedBlame(blameData) {
+  state.loadedFilePath = state.selectedFile ? state.selectedFile.path : '';
   if (!blameData || blameData.length === 0) {
     blameViewerPanel.innerHTML = '<div class="loader-container">No lines found in this file to blame.</div>';
     return;
@@ -1118,6 +1155,13 @@ async function renderDetailedContent() {
   const ext = filePath.split('.').pop().toLowerCase();
   const rawUrl = `/api/file-raw?ref=${encodeURIComponent(target)}&path=${encodeURIComponent(filePath)}`;
 
+  const isSameFile = state.selectedFile && (filePath === state.loadedFilePath);
+  const hasRenderedContent = renderViewerPanel.querySelector('.rendered-markdown-body') !== null ||
+                             renderViewerPanel.querySelector('.rendered-fallback-container') !== null ||
+                             renderViewerPanel.querySelector('.rendered-image') !== null ||
+                             renderViewerPanel.querySelector('.rendered-pdf-container') !== null ||
+                             renderViewerPanel.querySelector('.rendered-html-container') !== null;
+
   // Images
   const imageExtensions = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'ico'];
   
@@ -1127,6 +1171,7 @@ async function renderDetailedContent() {
         <img src="${rawUrl}" alt="${escapeHtml(filePath)}" class="rendered-image" />
       </div>
     `;
+    state.loadedFilePath = filePath;
     return;
   }
 
@@ -1137,6 +1182,7 @@ async function renderDetailedContent() {
         <iframe src="${rawUrl}" class="rendered-pdf-iframe"></iframe>
       </div>
     `;
+    state.loadedFilePath = filePath;
     return;
   }
 
@@ -1147,12 +1193,19 @@ async function renderDetailedContent() {
         <iframe src="${rawUrl}" class="rendered-html-iframe"></iframe>
       </div>
     `;
+    state.loadedFilePath = filePath;
     return;
   }
 
   // Markdown
   if (ext === 'md' || ext === 'markdown') {
-    renderViewerPanel.innerHTML = '<div class="loader-container"><div class="spinner"></div><div>Parsing Markdown...</div></div>';
+    if (!isSameFile || !hasRenderedContent) {
+      state.loadedFilePath = '';
+      renderViewerPanel.innerHTML = '<div class="loader-container"><div class="spinner"></div><div>Parsing Markdown...</div></div>';
+    } else {
+      showSubtleUpdateIndicator('detailHeader', true);
+    }
+
     try {
       const res = await fetch(rawUrl);
       if (!res.ok) throw new Error('Failed to load raw markdown content');
@@ -1170,15 +1223,25 @@ async function renderDetailedContent() {
           ${htmlContent}
         </div>
       `;
+      state.loadedFilePath = filePath;
     } catch (err) {
+      state.loadedFilePath = '';
       renderViewerPanel.innerHTML = `<div class="loader-container" style="color: var(--status-del)"><i data-lucide="circle-alert"></i> Failed to render Markdown: ${err.message}</div>`;
       lucide.createIcons();
+    } finally {
+      showSubtleUpdateIndicator('detailHeader', false);
     }
     return;
   }
 
   // Default fallback (e.g. text/code files)
-  renderViewerPanel.innerHTML = '<div class="loader-container"><div class="spinner"></div><div>Loading text...</div></div>';
+  if (!isSameFile || !hasRenderedContent) {
+    state.loadedFilePath = '';
+    renderViewerPanel.innerHTML = '<div class="loader-container"><div class="spinner"></div><div>Loading text...</div></div>';
+  } else {
+    showSubtleUpdateIndicator('detailHeader', true);
+  }
+
   try {
     const res = await fetch(rawUrl);
     if (!res.ok) throw new Error('Failed to load file contents');
@@ -1206,9 +1269,13 @@ async function renderDetailedContent() {
       </div>
     `;
     lucide.createIcons();
+    state.loadedFilePath = filePath;
   } catch (err) {
+    state.loadedFilePath = '';
     renderViewerPanel.innerHTML = `<div class="loader-container" style="color: var(--status-del)"><i data-lucide="circle-alert"></i> Failed to retrieve content: ${err.message}</div>`;
     lucide.createIcons();
+  } finally {
+    showSubtleUpdateIndicator('detailHeader', false);
   }
 }
 
@@ -1838,7 +1905,7 @@ window.resetCompareScope = () => {
   handleRefsChange();
 };
 
-function renderHomepage() {
+function renderHomepage(refreshGraph = false) {
   if (!state.isRepo) {
     mainEmptyState.innerHTML = `
       <div class="empty-state-card">
@@ -1870,10 +1937,101 @@ function renderHomepage() {
   const activeFiles = state.files.filter(f => !f.isIgnored);
   const changedCount = activeFiles.filter(f => f.status !== 'unchanged' && !f.isUntracked).length;
   const untrackedCount = activeFiles.filter(f => f.isUntracked).length;
-  
   const changedFiles = activeFiles.filter(f => f.status !== 'unchanged' || f.isUntracked);
 
-  // Changed files list html
+  // Check if dashboard container is already rendered and visible
+  const dashboardContainer = mainEmptyState.querySelector('.dashboard-container');
+  if (dashboardContainer && mainEmptyState.style.display !== 'none') {
+    // Just update the dynamic elements inside the existing dashboard!
+    
+    // 1. Update stats numbers
+    const statNums = dashboardContainer.querySelectorAll('.status-card .stat-num');
+    if (statNums.length >= 2) {
+      statNums[0].innerText = changedCount;
+      statNums[1].innerText = untrackedCount;
+    }
+
+    // 2. Update references statistics
+    const refNums = dashboardContainer.querySelectorAll('.summary-card .ref-num');
+    if (refNums.length >= 2) {
+      refNums[0].innerText = state.branches.length;
+      refNums[1].innerText = state.tags.length;
+    }
+
+    // 3. Update compare scope refs
+    const basePill = dashboardContainer.querySelector('.base-pill');
+    const targetPill = dashboardContainer.querySelector('.target-pill');
+    if (basePill) basePill.innerText = state.baseRef;
+    if (targetPill) targetPill.innerText = state.targetRef === '__live__' ? 'Live' : state.targetRef;
+
+    // 4. Update branch badge
+    const branchBadgeSpan = dashboardContainer.querySelector('.dashboard-branch-badge span');
+    if (branchBadgeSpan) branchBadgeSpan.innerText = state.currentBranch || 'unknown';
+
+    // 5. Update changed files list
+    const verticalStack = dashboardContainer.querySelector('.dashboard-vertical-stack');
+    if (verticalStack) {
+      let changedSection = verticalStack.querySelector('.dashboard-section:not(#dagGraphSection)');
+      
+      let changedFilesHtml = '';
+      if (changedFiles.length > 0) {
+        changedFilesHtml = `
+          <div class="dashboard-section-header">
+            <h3><i data-lucide="file-diff"></i> Changed Files</h3>
+            <button class="btn btn-secondary btn-sm" onclick="viewAllChanges()" title="View stacked diff of all changed files">
+              <i data-lucide="layout-list"></i> View All Changes
+            </button>
+          </div>
+          <div class="dashboard-changed-list">
+            ${changedFiles.map(f => {
+              let badgeClass = '';
+              let badgeText = '';
+              let titleText = '';
+              if (f.isUntracked) {
+                badgeClass = 'badge-untracked';
+                badgeText = '?';
+                titleText = 'Untracked';
+              } else {
+                badgeClass = getBadgeClass(f.status);
+                badgeText = f.status;
+                titleText = f.status === 'R' ? 'Renamed' : f.status === 'A' ? 'Added' : f.status === 'D' ? 'Deleted' : 'Modified';
+              }
+              return `
+                <div class="dashboard-file-row" onclick="handleFileClick('${escapeJsString(f.path)}')" title="Click to view diff for ${escapeHtml(f.path)}">
+                  <span class="file-badge ${badgeClass}" title="${titleText}">${badgeText}</span>
+                  <span class="dashboard-file-path">${escapeHtml(f.path)}</span>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        `;
+      } else {
+        changedFilesHtml = `
+          <div class="dashboard-section-header">
+            <h3><i data-lucide="file-diff"></i> Changed Files</h3>
+          </div>
+          <p class="empty-dashboard-text">No changed files in this comparison scope.</p>
+        `;
+      }
+
+      if (changedSection) {
+        changedSection.innerHTML = changedFilesHtml;
+      } else {
+        const newSec = document.createElement('div');
+        newSec.className = 'dashboard-section';
+        newSec.innerHTML = changedFilesHtml;
+        verticalStack.insertBefore(newSec, verticalStack.firstChild);
+      }
+    }
+    
+    lucide.createIcons();
+    if (refreshGraph) {
+      fetchAndRenderDag(); // Refetch the graph silently in the background
+    }
+    return;
+  }
+
+  // Changed files list html fallback for full render
   let changedFilesHtml = '';
   if (changedFiles.length > 0) {
     changedFilesHtml = `
@@ -1911,7 +2069,9 @@ function renderHomepage() {
   } else {
     changedFilesHtml = `
       <div class="dashboard-section">
-        <h3><i data-lucide="file-diff"></i> Changed Files</h3>
+        <div class="dashboard-section-header">
+          <h3><i data-lucide="file-diff"></i> Changed Files</h3>
+        </div>
         <p class="empty-dashboard-text">No changed files in this comparison scope.</p>
       </div>
     `;
@@ -1994,6 +2154,13 @@ async function fetchAndRenderDag() {
   const dagContainer = document.getElementById('dagContainer');
   if (!dagContainer) return;
 
+  const hasExistingGraph = dagContainer.querySelector('.dag-row') || dagContainer.querySelector('.empty-dashboard-text');
+  if (!hasExistingGraph) {
+    dagContainer.innerHTML = '<div class="loader-container" style="padding: 20px 0;"><div class="spinner"></div><div>Loading Git graph...</div></div>';
+  } else {
+    showSubtleUpdateIndicator('dagGraphSection', true);
+  }
+
   try {
     const res = await fetch('/api/dag');
     if (!res.ok) throw new Error('Failed to fetch commit graph');
@@ -2001,6 +2168,7 @@ async function fetchAndRenderDag() {
     
     if (!dagData || dagData.length === 0) {
       dagContainer.innerHTML = '<p class="empty-dashboard-text">No commits found in history.</p>';
+      showSubtleUpdateIndicator('dagGraphSection', false);
       return;
     }
 
@@ -2019,7 +2187,7 @@ async function fetchAndRenderDag() {
       '#a855f7'  // Purple
     ];
 
-    dagContainer.innerHTML = dagData.map(row => {
+    const newHtml = dagData.map(row => {
       const isConnector = !row.commit;
       const rowHeight = isConnector ? 18 : 26;
       const cy = rowHeight / 2;
@@ -2038,15 +2206,15 @@ async function fetchAndRenderDag() {
           shapes.push(`<line x1="${x}" y1="0" x2="${x}" y2="${rowHeight}" stroke="${color}" stroke-width="2" />`);
         } else if (char === '/') {
           shapes.push(`<line x1="${(c + 1) * colWidth + colWidth / 2}" y1="0" x2="${(c - 1) * colWidth + colWidth / 2}" y2="${rowHeight}" stroke="${color}" stroke-width="2" />`);
+          shapes.push(`<line x1="${x}" y1="0" x2="${x}" y2="${rowHeight}" stroke="${color}" stroke-width="2" />`);
         } else if (char === '\\') {
-          shapes.push(`<line x1="${(c - 1) * colWidth + colWidth / 2}" y1="0" x2="${(c + 1) * colWidth + colWidth / 2}" y2="${rowHeight}" stroke="${color}" stroke-width="2" />`);
-        } else if (char === '_') {
-          shapes.push(`<line x1="${c * colWidth}" y1="${cy}" x2="${(c + 1) * colWidth}" y2="${cy}" stroke="${color}" stroke-width="2" />`);
+          shapes.push(`<line x1="${(c - 1) * colWidth + colWidth / 2}" y1="0" x2="${(c + 1) * colWidth + colWidth / 2}" y2="${rowHeight}" stroke="${color}" stroke-width="2" stroke-linecap="round" />`);
+          shapes.push(`<line x1="${x}" y1="0" x2="${x}" y2="${rowHeight}" stroke="${color}" stroke-width="2" />`);
         }
       });
-
+      
       const svgHtml = `
-        <svg width="${graphWidth}" height="${rowHeight}" class="dag-svg-slice">
+        <svg width="${graphWidth}" height="${rowHeight}">
           ${shapes.join('')}
         </svg>
       `;
@@ -2075,8 +2243,14 @@ async function fetchAndRenderDag() {
       `;
     }).join('');
 
+    dagContainer.innerHTML = newHtml;
+    lucide.createIcons();
   } catch (err) {
-    dagContainer.innerHTML = `<p style="color: var(--status-del); font-size: 12px; padding: 12px;">Failed to load graph: ${err.message}</p>`;
+    if (!hasExistingGraph) {
+      dagContainer.innerHTML = `<p style="color: var(--status-del); font-size: 12px; padding: 12px;">Failed to load graph: ${err.message}</p>`;
+    }
+  } finally {
+    showSubtleUpdateIndicator('dagGraphSection', false);
   }
 }
 
@@ -2170,7 +2344,7 @@ window.addEventListener('popstate', async () => {
     state.isRepo = false;
     state.repoPath = '';
     clearRepoData();
-    renderHomepage();
+    renderHomepage(true);
     return;
   }
   
@@ -2276,6 +2450,57 @@ async function loadAllChanges() {
     modeToggleGroup.style.display = 'none';
   }
 
+  // Check if the file blocks currently in the DOM match the target changedFiles list
+  const existingBlocks = Array.from(allChangesPanel.querySelectorAll('.stacked-diff-file')).map(el => el.id);
+  const targetBlocks = changedFiles.map(file => `file-block-stacked-file-${file.path.replace(/[^a-zA-Z0-9]/g, '_')}`);
+  const listsMatch = existingBlocks.length === targetBlocks.length && existingBlocks.every((val, index) => val === targetBlocks[index]);
+
+  if (listsMatch && changedFiles.length > 0) {
+    // If files are identical, keep existing diff tables and reload them in the background
+    changedFiles.forEach(async (file) => {
+      const fileId = `stacked-file-${file.path.replace(/[^a-zA-Z0-9]/g, '_')}`;
+      const bodyContainer = document.getElementById(`body-${fileId}`);
+      const block = document.getElementById(`file-block-${fileId}`);
+      if (!bodyContainer || !block) return;
+      
+      const headerTitle = block.querySelector('.stacked-diff-title');
+      let indicator = headerTitle ? headerTitle.querySelector('.subtle-update-indicator') : null;
+      if (headerTitle && !indicator) {
+        indicator = document.createElement('span');
+        indicator.className = 'subtle-update-indicator';
+        indicator.innerHTML = '<span class="pulse-dot" style="margin-left: 8px; width: 6px; height: 6px; background-color: var(--color-primary); display: inline-block; border-radius: 50%;"></span>';
+        headerTitle.appendChild(indicator);
+      }
+
+      try {
+        const params = new URLSearchParams({
+          base: state.baseRef,
+          target: state.targetRef,
+          filePath: file.path,
+          status: file.status
+        });
+        if (file.oldPath) {
+          params.append('oldFilePath', file.oldPath);
+        }
+        if (state.stackedFullContextFiles.has(file.path)) {
+          params.append('fullContext', 'true');
+        }
+        
+        const res = await fetch(`/api/file-diff?${params.toString()}`);
+        if (!res.ok) throw new Error('Failed to load file diff');
+        
+        const diffData = await res.json();
+        renderStackedFileDiff(diffData, bodyContainer, file.path);
+      } catch (err) {
+        bodyContainer.innerHTML = `<div class="loader-container" style="color: var(--status-del)"><i data-lucide="circle-alert"></i> Failed: ${err.message}</div>`;
+        lucide.createIcons();
+      } finally {
+        if (indicator) indicator.remove();
+      }
+    });
+    return;
+  }
+
   if (changedFiles.length === 0) {
     allChangesPanel.innerHTML = `
       <div class="binary-diff-info">
@@ -2319,7 +2544,7 @@ async function loadAllChanges() {
           <div class="stacked-diff-actions">
             <div class="toggle-group">
               <button class="toggle-btn toggle-hunks-btn ${!hasFull ? 'active' : ''}" onclick="setStackedFileFullContext(event, '${escapeJsString(file.path)}', false)" title="Show only changed sections">
-                Hunks
+                Changes Only
               </button>
               <button class="toggle-btn toggle-full-btn ${hasFull ? 'active' : ''}" onclick="setStackedFileFullContext(event, '${escapeJsString(file.path)}', true)" title="Show entire file with diff in context">
                 Whole File
@@ -2526,6 +2751,27 @@ async function handleGitRefChange() {
     showToast('Sync', 'Git reference updated (commit/branch change detected)', 'success');
   } catch (err) {
     console.error('Failed to sync git ref change:', err);
+  }
+}
+
+function showSubtleUpdateIndicator(parentId, show) {
+  const parent = document.getElementById(parentId);
+  if (!parent) return;
+  const header = parent.querySelector('h3') || parent.querySelector('h2');
+  if (!header) return;
+  
+  let indicator = header.querySelector('.subtle-update-indicator');
+  if (show) {
+    if (!indicator) {
+      indicator = document.createElement('span');
+      indicator.className = 'subtle-update-indicator';
+      indicator.innerHTML = '<span class="subtle-spinner" title="Updating in background..."></span>';
+      header.appendChild(indicator);
+    }
+  } else {
+    if (indicator) {
+      indicator.remove();
+    }
   }
 }
 
