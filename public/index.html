@@ -126,8 +126,11 @@
         <div class="detail-actions">
           <!-- Full File Toggle -->
           <div class="toggle-group" id="fullContextToggleGroup">
+            <button class="toggle-btn active" id="hunksContextBtn" title="Show only changed sections">
+              Hunks
+            </button>
             <button class="toggle-btn" id="fullContextBtn" title="Show entire file with diff in context">
-              <i data-lucide="eye"></i> Full File
+              Whole File
             </button>
           </div>
 
@@ -144,7 +147,7 @@
 
 
           <!-- Mode Toggle (Diff vs Blame vs Render vs History) -->
-          <div class="toggle-group">
+          <div class="toggle-group" id="modeToggleGroup">
             <button class="toggle-btn active" id="modeDiffBtn">
               <i data-lucide="code"></i> Diff
             </button>
@@ -184,6 +187,11 @@
                 </div>
               </div>
             </div>
+          </div>
+
+          <!-- All Changes View Panel -->
+          <div class="all-changes-panel" id="allChangesPanel" style="display: none;">
+            <!-- Loaded dynamically -->
           </div>
 
           <!-- Diff View Panel -->

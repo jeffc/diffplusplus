@@ -12,6 +12,8 @@ const state = {
   
   files: [],
   selectedFile: null,      // { path, status, oldPath }
+  viewAllChanges: false,   // whether viewing all changes stacked
+  stackedFullContextFiles: new Set(), // set of file paths in stacked view with full context enabled
   
   baseRef: 'HEAD',
   targetRef: '__live__',
@@ -61,6 +63,7 @@ const detailFileRename = document.getElementById('detailFileRename');
 const unifiedFormatBtn = document.getElementById('unifiedFormatBtn');
 const splitFormatBtn = document.getElementById('splitFormatBtn');
 const diffFormatToggleGroup = document.getElementById('diffFormatToggleGroup');
+const hunksContextBtn = document.getElementById('hunksContextBtn');
 const fullContextBtn = document.getElementById('fullContextBtn');
 const fullContextToggleGroup = document.getElementById('fullContextToggleGroup');
 const modeDiffBtn = document.getElementById('modeDiffBtn');
@@ -73,6 +76,8 @@ const diffViewerPanel = document.getElementById('diffViewerPanel');
 const blameViewerPanel = document.getElementById('blameViewerPanel');
 const renderViewerPanel = document.getElementById('renderViewerPanel');
 const historyViewerPanel = document.getElementById('historyViewerPanel');
+const allChangesPanel = document.getElementById('allChangesPanel');
+const modeToggleGroup = document.getElementById('modeToggleGroup');
 
 const toastContainer = document.getElementById('toastContainer');
 
@@ -180,7 +185,8 @@ function initApp() {
   // Layout & Mode toggle listeners
   unifiedFormatBtn.addEventListener('click', () => setDiffLayout('unified'));
   splitFormatBtn.addEventListener('click', () => setDiffLayout('split'));
-  fullContextBtn.addEventListener('click', toggleFullContext);
+  hunksContextBtn.addEventListener('click', () => setFullContext(false));
+  fullContextBtn.addEventListener('click', () => setFullContext(true));
   modeDiffBtn.addEventListener('click', () => setViewMode('diff'));
   modeBlameBtn.addEventListener('click', () => setViewMode('blame'));
   modeRenderBtn.addEventListener('click', () => setViewMode('render'));
@@ -306,6 +312,7 @@ async function loadRepoData(initialLoad = false) {
       const urlLayout = params.get('layout');
       const urlMode = params.get('mode');
       const urlFullContext = params.get('fullContext');
+      const urlViewAll = params.get('viewAll');
 
       if (urlBase) state.baseRef = urlBase;
       else state.baseRef = state.currentBranch || 'HEAD';
@@ -320,6 +327,11 @@ async function loadRepoData(initialLoad = false) {
       } else {
         state.fullContext = false;
       }
+      if (urlViewAll === 'true') {
+        state.viewAllChanges = true;
+      } else {
+        state.viewAllChanges = false;
+      }
 
       // Sync toggles in UI
       if (urlLayout) {
@@ -330,6 +342,9 @@ async function loadRepoData(initialLoad = false) {
         modeDiffBtn.classList.toggle('active', state.viewMode === 'diff');
         modeBlameBtn.classList.toggle('active', state.viewMode === 'blame');
         modeRenderBtn.classList.toggle('active', state.viewMode === 'render');
+      }
+      if (hunksContextBtn) {
+        hunksContextBtn.classList.toggle('active', state.fullContext === false);
       }
       if (fullContextBtn) {
         fullContextBtn.classList.toggle('active', state.fullContext === true);
@@ -362,6 +377,7 @@ function clearRepoData() {
   `;
   lucide.createIcons();
   sidebarStats.innerText = 'No files changed';
+  state.stackedFullContextFiles.clear();
   hideDetailView();
   stopFileWatch();
 }
@@ -381,14 +397,13 @@ async function fetchDiffList(initialLoad = false, shouldReloadDetails = true) {
     renderFilesList();
     updateStatsUI();
 
-    if (!state.selectedFile) {
-      renderHomepage();
-    }
-
     if (initialLoad) {
       const params = new URLSearchParams(window.location.search);
+      const urlViewAll = params.get('viewAll');
       const urlFile = params.get('file');
-      if (urlFile) {
+      if (urlViewAll === 'true') {
+        viewAllChanges(false);
+      } else if (urlFile) {
         const file = state.files.find(f => f.path === urlFile);
         if (file) {
           selectFile(file, false);
@@ -396,7 +411,11 @@ async function fetchDiffList(initialLoad = false, shouldReloadDetails = true) {
           // Allow opening files in Blame Mode even if not currently modified
           selectFile({ path: urlFile, status: 'M', oldPath: null }, false);
         }
+      } else {
+        renderHomepage();
       }
+    } else if (state.viewAllChanges) {
+      loadAllChanges();
     } else if (state.selectedFile) {
       const stillExists = state.files.find(f => f.path === state.selectedFile.path);
       if (stillExists) {
@@ -408,6 +427,8 @@ async function fetchDiffList(initialLoad = false, shouldReloadDetails = true) {
         hideDetailView();
         showToast('Info', 'Selected file has no differences anymore', 'info');
       }
+    } else {
+      renderHomepage();
     }
 
     syncStateToUrl();
@@ -659,6 +680,8 @@ function expandParentFolders(filePath) {
 
 function selectFile(file, shouldSync = true) {
   state.selectedFile = file;
+  state.viewAllChanges = false;
+  allChangesPanel.style.display = 'none';
   
   // Expand parent directories in sidebar tree
   expandParentFolders(file.path);
@@ -709,11 +732,14 @@ function selectFile(file, shouldSync = true) {
 
 function hideDetailView() {
   state.selectedFile = null;
+  state.viewAllChanges = false;
+  state.stackedFullContextFiles.clear();
   detailHeader.style.display = 'none';
   diffViewerPanel.style.display = 'none';
   blameViewerPanel.style.display = 'none';
   renderViewerPanel.style.display = 'none';
   historyViewerPanel.style.display = 'none';
+  allChangesPanel.style.display = 'none';
   mainEmptyState.style.display = 'flex';
   renderHomepage();
   syncStateToUrl();
@@ -1311,6 +1337,8 @@ function setDiffLayout(layout) {
   splitFormatBtn.classList.toggle('active', layout === 'split');
   if (state.selectedFile && state.viewMode === 'diff') {
     loadDetailedContent();
+  } else if (state.viewAllChanges) {
+    loadAllChanges();
   }
   syncStateToUrl();
 }
@@ -1365,6 +1393,11 @@ function setupFileWatch() {
     try {
       const data = JSON.parse(event.data);
       if (data.event) {
+        if (data.event === 'git-ref-change') {
+          handleGitRefChange();
+          return;
+        }
+
         if (data.path) {
           changedPathsSinceLastRefresh.add(data.path);
         }
@@ -1730,10 +1763,11 @@ function syncStateToUrl(push = true) {
   url.searchParams.set('repoPath', state.repoPath);
   url.searchParams.set('base', state.baseRef || '');
   url.searchParams.set('target', state.targetRef || '');
-  url.searchParams.set('file', state.selectedFile ? state.selectedFile.path : '');
+  url.searchParams.set('file', (!state.viewAllChanges && state.selectedFile) ? state.selectedFile.path : '');
   url.searchParams.set('mode', state.viewMode || '');
   url.searchParams.set('layout', state.diffLayout || '');
   url.searchParams.set('fullContext', state.fullContext ? 'true' : 'false');
+  url.searchParams.set('viewAll', state.viewAllChanges ? 'true' : 'false');
   
   const targetUrl = url.pathname + url.search;
   if (window.location.search !== url.search) {
@@ -1745,9 +1779,10 @@ function syncStateToUrl(push = true) {
   }
 }
 
-function toggleFullContext() {
-  state.fullContext = !state.fullContext;
-  fullContextBtn.classList.toggle('active', state.fullContext);
+function setFullContext(enabled) {
+  state.fullContext = enabled;
+  if (hunksContextBtn) hunksContextBtn.classList.toggle('active', !enabled);
+  if (fullContextBtn) fullContextBtn.classList.toggle('active', enabled);
   loadDetailedContent();
   syncStateToUrl();
 }
@@ -1761,9 +1796,16 @@ window.confirmRenderBinaryInline = (filePath, containerId) => {
   state.confirmedBinaryFiles.add(filePath);
   const container = document.getElementById(containerId);
   if (container) {
-    const file = state.files.find(f => f.path === filePath);
-    if (file) {
-      fetchAndRenderInlineDiff(file, container);
+    if (containerId.startsWith('stacked-binary-')) {
+      const file = state.files.find(f => f.path === filePath);
+      if (file) {
+        fetchAndRenderStackedDiff(file, container);
+      }
+    } else {
+      const file = state.files.find(f => f.path === filePath);
+      if (file) {
+        fetchAndRenderInlineDiff(file, container);
+      }
     }
   }
 };
@@ -1836,7 +1878,12 @@ function renderHomepage() {
   if (changedFiles.length > 0) {
     changedFilesHtml = `
       <div class="dashboard-section">
-        <h3><i data-lucide="file-diff"></i> Changed Files</h3>
+        <div class="dashboard-section-header">
+          <h3><i data-lucide="file-diff"></i> Changed Files</h3>
+          <button class="btn btn-secondary btn-sm" onclick="viewAllChanges()" title="View stacked diff of all changed files">
+            <i data-lucide="layout-list"></i> View All Changes
+          </button>
+        </div>
         <div class="dashboard-changed-list">
           ${changedFiles.map(f => {
             let badgeClass = '';
@@ -1928,14 +1975,14 @@ function renderHomepage() {
         </div>
       </div>
 
-      <div class="dashboard-columns">
+      <div class="dashboard-vertical-stack">
+        ${changedFilesHtml}
         <div class="dashboard-section" id="dagGraphSection">
           <h3><i data-lucide="history"></i> Commit History Graph</h3>
           <div class="dag-container" id="dagContainer">
             <div class="loader-container" style="padding: 20px 0;"><div class="spinner"></div><div>Loading Git graph...</div></div>
           </div>
         </div>
-        ${changedFilesHtml}
       </div>
     </div>
   `;
@@ -2138,6 +2185,7 @@ window.addEventListener('popstate', async () => {
       const urlMode = params.get('mode') || 'diff';
       const urlLayout = params.get('layout') || 'unified';
       const urlFullContext = params.get('fullContext') === 'true';
+      const urlViewAll = params.get('viewAll') === 'true';
 
       const refsChanged = (urlBase !== state.baseRef) || (urlTarget !== state.targetRef);
       
@@ -2146,6 +2194,7 @@ window.addEventListener('popstate', async () => {
       state.viewMode = urlMode;
       state.diffLayout = urlLayout;
       state.fullContext = urlFullContext;
+      state.viewAllChanges = urlViewAll;
 
       populateDropdowns();
 
@@ -2157,6 +2206,9 @@ window.addEventListener('popstate', async () => {
       modeRenderBtn.classList.toggle('active', state.viewMode === 'render');
       modeHistoryBtn.classList.toggle('active', state.viewMode === 'history');
       
+      if (hunksContextBtn) {
+        hunksContextBtn.classList.toggle('active', state.fullContext === false);
+      }
       if (fullContextBtn) {
         fullContextBtn.classList.toggle('active', state.fullContext === true);
       }
@@ -2165,7 +2217,9 @@ window.addEventListener('popstate', async () => {
         await fetchDiffList(false, false);
       }
 
-      if (urlFile) {
+      if (urlViewAll) {
+        viewAllChanges(false);
+      } else if (urlFile) {
         const file = state.files.find(f => f.path === urlFile) || { path: urlFile, status: 'unchanged', oldPath: null };
         selectFile(file, false);
       } else {
@@ -2176,4 +2230,302 @@ window.addEventListener('popstate', async () => {
     blockPushState = false;
   }
 });
+
+// ==========================================================================
+// All Changes stacked view implementation
+// ==========================================================================
+window.viewAllChanges = (shouldSync = true) => {
+  loadAllChanges();
+  if (shouldSync) {
+    syncStateToUrl();
+  }
+};
+
+async function loadAllChanges() {
+  state.viewAllChanges = true;
+  state.selectedFile = null;
+
+  // Update selection in list UI
+  const items = filesListContainer.querySelectorAll('.tree-file-row');
+  items.forEach(el => el.classList.remove('active'));
+
+  mainEmptyState.style.display = 'none';
+  diffViewerPanel.style.display = 'none';
+  blameViewerPanel.style.display = 'none';
+  renderViewerPanel.style.display = 'none';
+  historyViewerPanel.style.display = 'none';
+  allChangesPanel.style.display = 'flex';
+
+  // Configure Detail Header
+  detailHeader.style.display = 'flex';
+  
+  const changedFiles = state.files.filter(f => !f.isIgnored && (f.status !== 'unchanged' || f.isUntracked));
+
+  detailFileBadge.className = 'file-status-badge badge-renamed';
+  detailFileBadge.innerText = `${changedFiles.length} FILES`;
+  detailFileBadge.title = 'Total files with changes';
+  
+  detailFilePath.innerText = 'All Changed Files';
+  detailFileRename.style.display = 'none';
+
+  diffFormatToggleGroup.style.visibility = 'visible';
+  if (fullContextToggleGroup) {
+    fullContextToggleGroup.style.display = 'none';
+  }
+  if (modeToggleGroup) {
+    modeToggleGroup.style.display = 'none';
+  }
+
+  if (changedFiles.length === 0) {
+    allChangesPanel.innerHTML = `
+      <div class="binary-diff-info">
+        <i data-lucide="info"></i>
+        <h3>No differences</h3>
+        <p>No changes detected in this comparison scope.</p>
+      </div>
+    `;
+    lucide.createIcons();
+    return;
+  }
+
+  allChangesPanel.innerHTML = changedFiles.map(file => {
+    let badgeClass = '';
+    let badgeText = '';
+    let titleText = '';
+    if (file.isUntracked) {
+      badgeClass = 'badge-untracked';
+      badgeText = '?';
+      titleText = 'Untracked';
+    } else {
+      badgeClass = getBadgeClass(file.status);
+      badgeText = file.status;
+      titleText = file.status === 'R' ? 'Renamed' : file.status === 'A' ? 'Added' : file.status === 'D' ? 'Deleted' : 'Modified';
+    }
+
+    const fileId = `stacked-file-${file.path.replace(/[^a-zA-Z0-9]/g, '_')}`;
+    const hasFull = state.stackedFullContextFiles.has(file.path);
+
+    return `
+      <div class="stacked-diff-file" id="file-block-${fileId}">
+        <div class="stacked-diff-header">
+          <div class="stacked-diff-title">
+            <button class="btn-collapse" onclick="toggleStackedFileCollapse('${fileId}')" title="Collapse/Expand file view">
+              <i data-lucide="chevron-down"></i>
+            </button>
+            <span class="file-status-badge ${badgeClass}" title="${titleText}">${badgeText}</span>
+            <span class="stacked-diff-path" onclick="handleFileClick('${escapeJsString(file.path)}')" title="Click to view full detail">${escapeHtml(file.path)}</span>
+            ${file.status === 'R' && file.oldPath ? `<span class="file-path-rename"> (renamed from ${escapeHtml(file.oldPath)})</span>` : ''}
+          </div>
+          <div class="stacked-diff-actions">
+            <div class="toggle-group">
+              <button class="toggle-btn toggle-hunks-btn ${!hasFull ? 'active' : ''}" onclick="setStackedFileFullContext(event, '${escapeJsString(file.path)}', false)" title="Show only changed sections">
+                Hunks
+              </button>
+              <button class="toggle-btn toggle-full-btn ${hasFull ? 'active' : ''}" onclick="setStackedFileFullContext(event, '${escapeJsString(file.path)}', true)" title="Show entire file with diff in context">
+                Whole File
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="stacked-diff-body" id="body-${fileId}">
+          <div class="loader-container"><div class="spinner"></div><div>Loading diff...</div></div>
+        </div>
+      </div>
+    `;
+  }).join('');
+  lucide.createIcons();
+
+  changedFiles.forEach(async (file) => {
+    const fileId = `stacked-file-${file.path.replace(/[^a-zA-Z0-9]/g, '_')}`;
+    const bodyContainer = document.getElementById(`body-${fileId}`);
+    if (!bodyContainer) return;
+
+    try {
+      const params = new URLSearchParams({
+        base: state.baseRef,
+        target: state.targetRef,
+        filePath: file.path,
+        status: file.status
+      });
+      if (file.oldPath) {
+        params.append('oldFilePath', file.oldPath);
+      }
+      if (state.stackedFullContextFiles.has(file.path)) {
+        params.append('fullContext', 'true');
+      }
+      
+      const res = await fetch(`/api/file-diff?${params.toString()}`);
+      if (!res.ok) throw new Error('Failed to load file diff');
+      
+      const diffData = await res.json();
+      renderStackedFileDiff(diffData, bodyContainer, file.path);
+    } catch (err) {
+      bodyContainer.innerHTML = `<div class="loader-container" style="color: var(--status-del)"><i data-lucide="circle-alert"></i> Failed: ${err.message}</div>`;
+      lucide.createIcons();
+    }
+  });
+}
+
+function renderStackedFileDiff(diffData, bodyContainer, filePath) {
+  if (diffData.isUnchangedFile && diffData.content !== undefined) {
+    const lines = diffData.content.split('\n');
+    diffData.hunks = [{
+      oldStart: 1,
+      oldLines: lines.length,
+      newStart: 1,
+      newLines: lines.length,
+      header: `@@ -1,${lines.length} +1,${lines.length} @@`,
+      lines: lines.map((line, idx) => ({
+        type: 'normal',
+        oldLine: idx + 1,
+        newLine: idx + 1,
+        content: ' ' + line
+      }))
+    }];
+  }
+
+  if (diffData.isLarge) {
+    bodyContainer.innerHTML = `
+      <div class="binary-diff-info">
+        <i data-lucide="file-warning"></i>
+        <h3>File too large</h3>
+        <p>This file is too large to render in the browser (${(diffData.size / 1024 / 1024).toFixed(2)} MB).</p>
+      </div>
+    `;
+    lucide.createIcons();
+    return;
+  }
+  
+  if (diffData.isBinary) {
+    if (!state.confirmedBinaryFiles.has(diffData.newPath)) {
+      const uniqueId = `stacked-binary-${diffData.newPath.replace(/[^a-zA-Z0-9]/g, '_')}`;
+      bodyContainer.innerHTML = `
+        <div class="binary-diff-info" id="${uniqueId}">
+          <i data-lucide="binary"></i>
+          <h3>Binary File Detected</h3>
+          <p>This file is a binary file. Render contents/diff?</p>
+          <button class="btn btn-primary" onclick="confirmRenderBinaryInline('${escapeJsString(diffData.newPath)}', '${uniqueId}')">
+            Confirm and Render
+          </button>
+        </div>
+      `;
+      lucide.createIcons();
+      return;
+    }
+    bodyContainer.innerHTML = `
+      <div class="binary-diff-info">
+        <i data-lucide="binary"></i>
+        <h3>Binary File</h3>
+        <p>Binary files differ. No text diff preview available.</p>
+      </div>
+    `;
+    lucide.createIcons();
+    return;
+  }
+
+  if (!diffData.hunks || diffData.hunks.length === 0) {
+    bodyContainer.innerHTML = `
+      <div class="binary-diff-info">
+        <i data-lucide="info"></i>
+        <h3>No differences</h3>
+        <p>No changes detected in this file.</p>
+      </div>
+    `;
+    lucide.createIcons();
+    return;
+  }
+
+  if (state.diffLayout === 'unified') {
+    renderUnifiedDiff(diffData, bodyContainer, false);
+  } else {
+    renderSplitDiff(diffData, bodyContainer, false);
+  }
+}
+
+async function fetchAndRenderStackedDiff(file, container) {
+  container.innerHTML = '<div class="loader-container"><div class="spinner"></div><div>Loading diff...</div></div>';
+  try {
+    const params = new URLSearchParams({
+      base: state.baseRef,
+      target: state.targetRef,
+      filePath: file.path,
+      status: file.status
+    });
+    if (file.oldPath) {
+      params.append('oldFilePath', file.oldPath);
+    }
+    if (state.stackedFullContextFiles.has(file.path)) {
+      params.append('fullContext', 'true');
+    }
+    
+    const res = await fetch(`/api/file-diff?${params.toString()}`);
+    if (!res.ok) throw new Error('Failed to load file diff');
+    
+    const diffData = await res.json();
+    renderStackedFileDiff(diffData, container, file.path);
+  } catch (err) {
+    container.innerHTML = `<div class="loader-container" style="color: var(--status-del)"><i data-lucide="circle-alert"></i> Failed: ${err.message}</div>`;
+    lucide.createIcons();
+  }
+}
+
+window.toggleStackedFileCollapse = (fileId) => {
+  const block = document.getElementById(`file-block-${fileId}`);
+  if (block) {
+    block.classList.toggle('collapsed');
+  }
+};
+
+window.setStackedFileFullContext = async (event, filePath, enabled) => {
+  event.stopPropagation();
+  const alreadyEnabled = state.stackedFullContextFiles.has(filePath);
+  if (alreadyEnabled === enabled) return; // no change
+
+  if (enabled) {
+    state.stackedFullContextFiles.add(filePath);
+  } else {
+    state.stackedFullContextFiles.delete(filePath);
+  }
+
+  const file = state.files.find(f => f.path === filePath);
+  if (file) {
+    const fileId = `stacked-file-${filePath.replace(/[^a-zA-Z0-9]/g, '_')}`;
+    const bodyContainer = document.getElementById(`body-${fileId}`);
+    const block = document.getElementById(`file-block-${fileId}`);
+    
+    if (bodyContainer && block) {
+      await fetchAndRenderStackedDiff(file, bodyContainer);
+
+      const actions = block.querySelector('.stacked-diff-actions');
+      if (actions) {
+        const hasFull = state.stackedFullContextFiles.has(filePath);
+        const hunksBtn = actions.querySelector('.toggle-hunks-btn');
+        const fullBtn = actions.querySelector('.toggle-full-btn');
+        if (hunksBtn) hunksBtn.classList.toggle('active', !hasFull);
+        if (fullBtn) fullBtn.classList.toggle('active', hasFull);
+      }
+    }
+  }
+};
+
+async function handleGitRefChange() {
+  try {
+    // 1. Fetch updated refs from server
+    const refsRes = await fetch('/api/refs');
+    const refsData = await refsRes.json();
+    state.branches = refsData.branches || [];
+    state.commits = refsData.commits || [];
+    state.tags = refsData.tags || [];
+    
+    // Repopulate base/target dropdowns
+    populateDropdowns();
+
+    // 2. Fetch updated diff list (which will also refresh homepage/graph/details)
+    await fetchDiffList(false, true);
+    
+    showToast('Sync', 'Git reference updated (commit/branch change detected)', 'success');
+  } catch (err) {
+    console.error('Failed to sync git ref change:', err);
+  }
+}
 

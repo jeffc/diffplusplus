@@ -58,6 +58,19 @@
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
 }
 
+/* Disable ligatures in code views and monospaced paths to display standard characters (like ==, !=, ->, =>) */
+.diff-table,
+.split-diff-table,
+.blame-table,
+.fallback-code-table,
+.rendered-code-pre,
+.rendered-markdown-body code,
+.rendered-markdown-body pre,
+.file-path-rename {
+  font-variant-ligatures: none;
+  font-feature-settings: "liga" 0, "calt" 0;
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -2157,6 +2170,8 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1;
+  min-width: 0;
 }
 
 /* Visual DAG Graph */
@@ -2390,4 +2405,130 @@ body {
 .commit-date-hover {
   border-bottom: 1px dotted var(--text-muted);
   cursor: help;
+}
+
+/* Dashboard section header adjustment */
+.dashboard-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 10px;
+}
+
+.dashboard-section-header h3 {
+  border-bottom: none !important;
+  padding-bottom: 0 !important;
+}
+
+/* All Changes Stacked View Styling */
+.all-changes-panel {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.stacked-diff-file {
+  background-color: rgba(24, 24, 27, 0.2);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.stacked-diff-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background-color: rgba(9, 9, 11, 0.45);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.stacked-diff-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.stacked-diff-path {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--transition-fast);
+}
+
+.stacked-diff-path:hover {
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+
+.stacked-diff-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stacked-diff-body {
+  padding: 0;
+  overflow-x: auto;
+}
+
+.stacked-diff-body .diff-table,
+.stacked-diff-body .split-diff-table {
+  border: none;
+  border-radius: 0;
+}
+
+.btn-sm {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+/* Accordion collapse button & states */
+.btn-collapse {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+
+.btn-collapse:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+
+.btn-collapse i {
+  width: 16px;
+  height: 16px;
+  transition: transform var(--transition-fast);
+}
+
+.stacked-diff-file.collapsed .btn-collapse i {
+  transform: rotate(-90deg);
+}
+
+.stacked-diff-file.collapsed .stacked-diff-body {
+  display: none;
+}
+
+/* Vertical dashboard layout stack */
+.dashboard-vertical-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
 }

@@ -797,9 +797,20 @@ app.get('/api/watch', (req, res) => {
   // Initialize chokidar watcher using parsed gitignore rules
   const watcher = chokidar.watch(currentRepoPath, {
     ignored: (filePath) => {
-      // Always ignore .git directory
       const rel = path.relative(currentRepoPath, filePath);
-      if (rel.split(path.sep).includes('.git')) return true;
+      const parts = rel.split(path.sep);
+      
+      // Allow watching of HEAD and refs folder/files inside .git while ignoring other metadata
+      if (parts.includes('.git')) {
+        const gitIndex = parts.indexOf('.git');
+        const subPath = parts.slice(gitIndex + 1).join('/');
+        
+        if (subPath === '' || subPath === 'HEAD' || subPath === 'refs' || subPath.startsWith('refs/')) {
+          return false; // Do NOT ignore
+        }
+        return true; // Ignore all other git internal files
+      }
+      
       return gitignoreMatcher(filePath);
     },
     persistent: true,
@@ -810,6 +821,18 @@ app.get('/api/watch', (req, res) => {
   const sendFileChange = async (event, filePath) => {
     const relativePath = path.relative(currentRepoPath, filePath);
     
+    // Check if it is a git reference/HEAD change
+    const parts = relativePath.split(path.sep);
+    if (parts.includes('.git')) {
+      const gitIndex = parts.indexOf('.git');
+      const subPath = parts.slice(gitIndex + 1).join('/');
+      if (subPath === 'HEAD' || subPath.startsWith('refs/')) {
+        console.log(`[Watcher] Git reference change: ${subPath}`);
+        res.write(`data: ${JSON.stringify({ event: 'git-ref-change', path: subPath })}\n\n`);
+      }
+      return;
+    }
+
     // If gitignore changes, rebuild the matcher
     if (relativePath === '.gitignore') {
       gitignoreMatcher = parseGitignore(currentRepoPath);
