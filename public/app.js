@@ -858,21 +858,17 @@ async function loadDetailedContent() {
   if (!state.selectedFile) return;
 
   if (modeToggleGroup) {
-    modeToggleGroup.style.display = 'flex';
+    setControlVisibility(modeToggleGroup, true);
   }
 
   if (state.viewMode === 'diff') {
     diffViewerPanel.style.display = 'block';
     blameViewerPanel.style.display = 'none';
     renderViewerPanel.style.display = 'none';
-    diffFormatToggleGroup.style.visibility = 'visible';
     const isUnchanged = state.selectedFile && state.selectedFile.status === 'unchanged';
-    if (fullContextToggleGroup) {
-      fullContextToggleGroup.style.display = isUnchanged ? 'none' : 'flex';
-    }
-    if (singleVersionToggleGroup) {
-      singleVersionToggleGroup.style.display = (state.diffLayout === 'single' && !isUnchanged) ? 'flex' : 'none';
-    }
+    setControlVisibility(diffFormatToggleGroup, true);
+    setControlVisibility(fullContextToggleGroup, !isUnchanged);
+    setControlVisibility(singleVersionToggleGroup, state.diffLayout === 'single' && !isUnchanged);
     
     const isSameFile = state.selectedFile && (state.selectedFile.path === state.loadedFilePath);
     if (!isSameFile) {
@@ -912,10 +908,9 @@ async function loadDetailedContent() {
     diffViewerPanel.style.display = 'none';
     blameViewerPanel.style.display = 'block';
     renderViewerPanel.style.display = 'none';
-    diffFormatToggleGroup.style.visibility = 'hidden';
-    if (fullContextToggleGroup) {
-      fullContextToggleGroup.style.display = 'none';
-    }
+    setControlVisibility(diffFormatToggleGroup, false);
+    setControlVisibility(fullContextToggleGroup, false);
+    setControlVisibility(singleVersionToggleGroup, false);
     
     const isSameFile = state.selectedFile && (state.selectedFile.path === state.loadedFilePath);
     const hasBlameTable = blameViewerPanel.querySelector('.blame-table') !== null;
@@ -944,10 +939,9 @@ async function loadDetailedContent() {
     diffViewerPanel.style.display = 'none';
     blameViewerPanel.style.display = 'none';
     renderViewerPanel.style.display = 'block';
-    diffFormatToggleGroup.style.visibility = 'hidden';
-    if (fullContextToggleGroup) {
-      fullContextToggleGroup.style.display = 'none';
-    }
+    setControlVisibility(diffFormatToggleGroup, false);
+    setControlVisibility(fullContextToggleGroup, false);
+    setControlVisibility(singleVersionToggleGroup, false);
     
     renderDetailedContent();
   }
@@ -1569,10 +1563,8 @@ function setDiffLayout(layout) {
   if (singleFormatBtn) {
     singleFormatBtn.classList.toggle('active', layout === 'single');
   }
-  if (singleVersionToggleGroup) {
-    const isUnchanged = state.selectedFile && state.selectedFile.status === 'unchanged';
-    singleVersionToggleGroup.style.display = (layout === 'single' && state.viewMode === 'diff' && !isUnchanged) ? 'flex' : 'none';
-  }
+  const isUnchanged = state.selectedFile && state.selectedFile.status === 'unchanged';
+  setControlVisibility(singleVersionToggleGroup, layout === 'single' && state.viewMode === 'diff' && !isUnchanged);
   if (state.selectedFile && state.viewMode === 'diff') {
     loadDetailedContent();
   } else if (state.viewAllChanges) {
@@ -1605,12 +1597,9 @@ function setViewMode(mode) {
   modeHistoryBtn.classList.toggle('active', mode === 'history');
   
   const isUnchanged = state.selectedFile && state.selectedFile.status === 'unchanged';
-  if (fullContextToggleGroup) {
-    fullContextToggleGroup.style.display = (mode === 'diff' && !isUnchanged) ? 'flex' : 'none';
-  }
-  if (singleVersionToggleGroup) {
-    singleVersionToggleGroup.style.display = (mode === 'diff' && state.diffLayout === 'single' && !isUnchanged) ? 'flex' : 'none';
-  }
+  setControlVisibility(diffFormatToggleGroup, mode === 'diff');
+  setControlVisibility(fullContextToggleGroup, mode === 'diff' && !isUnchanged);
+  setControlVisibility(singleVersionToggleGroup, mode === 'diff' && state.diffLayout === 'single' && !isUnchanged);
   
   if (state.selectedFile) {
     if (mode === 'history') {
@@ -2453,10 +2442,9 @@ async function loadFileHistory() {
   blameViewerPanel.style.display = 'none';
   renderViewerPanel.style.display = 'none';
   historyViewerPanel.style.display = 'block';
-  diffFormatToggleGroup.style.visibility = 'hidden';
-  if (fullContextToggleGroup) {
-    fullContextToggleGroup.style.display = 'none';
-  }
+  setControlVisibility(diffFormatToggleGroup, false);
+  setControlVisibility(fullContextToggleGroup, false);
+  setControlVisibility(singleVersionToggleGroup, false);
 
   historyViewerPanel.innerHTML = '<div class="loader-container"><div class="spinner"></div><div>Loading file history...</div></div>';
 
@@ -2569,10 +2557,8 @@ window.addEventListener('popstate', async () => {
       if (singleFormatBtn) {
         singleFormatBtn.classList.toggle('active', state.diffLayout === 'single');
       }
-      if (singleVersionToggleGroup) {
-        const isUnchanged = state.selectedFile && state.selectedFile.status === 'unchanged';
-        singleVersionToggleGroup.style.display = (state.diffLayout === 'single' && state.viewMode === 'diff' && !isUnchanged) ? 'flex' : 'none';
-      }
+      const isUnchanged = state.selectedFile && state.selectedFile.status === 'unchanged';
+      setControlVisibility(singleVersionToggleGroup, state.diffLayout === 'single' && state.viewMode === 'diff' && !isUnchanged);
       if (singleBaseBtn) {
         singleBaseBtn.classList.toggle('active', state.singleVersion === 'base');
       }
@@ -2647,16 +2633,10 @@ async function loadAllChanges() {
   detailFilePath.innerText = 'All Changed Files';
   detailFileRename.style.display = 'none';
 
-  diffFormatToggleGroup.style.visibility = 'visible';
-  if (fullContextToggleGroup) {
-    fullContextToggleGroup.style.display = 'none';
-  }
-  if (singleVersionToggleGroup) {
-    singleVersionToggleGroup.style.display = (state.diffLayout === 'single') ? 'flex' : 'none';
-  }
-  if (modeToggleGroup) {
-    modeToggleGroup.style.display = 'none';
-  }
+  setControlVisibility(diffFormatToggleGroup, true);
+  setControlVisibility(fullContextToggleGroup, false, true);
+  setControlVisibility(singleVersionToggleGroup, state.diffLayout === 'single', true);
+  setControlVisibility(modeToggleGroup, false, true);
 
   // Check if the file blocks currently in the DOM match the target changedFiles list
   const existingBlocks = Array.from(allChangesPanel.querySelectorAll('.stacked-diff-file')).map(el => el.id);
@@ -2982,6 +2962,21 @@ function showSubtleUpdateIndicator(parentId, show) {
   } else {
     if (indicator) {
       indicator.remove();
+    }
+  }
+}
+
+function setControlVisibility(element, visible, collapse = false) {
+  if (!element) return;
+  if (visible) {
+    element.classList.remove('invisible-control');
+    element.classList.remove('collapsed-control');
+  } else {
+    if (collapse) {
+      element.classList.add('collapsed-control');
+    } else {
+      element.classList.add('invisible-control');
+      element.classList.remove('collapsed-control');
     }
   }
 }

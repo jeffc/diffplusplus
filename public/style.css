@@ -1018,6 +1018,19 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
+  transition: opacity var(--transition-normal), visibility var(--transition-normal);
+  opacity: 1;
+  visibility: visible;
+}
+
+.control-group.invisible-control {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.control-group.collapsed-control {
+  display: none !important;
 }
 
 .control-label {
