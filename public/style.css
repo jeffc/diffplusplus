@@ -2691,3 +2691,74 @@ body {
   flex-direction: column;
   gap: 32px;
 }
+
+/* Move Badges & Jump Highlights */
+.diff-code {
+  position: relative;
+}
+
+.diff-move-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 12px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+  transition: all var(--transition-fast);
+  vertical-align: middle;
+  line-height: 1;
+  font-family: var(--font-sans);
+}
+
+.diff-move-badge.move-to {
+  background-color: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.diff-move-badge.move-to:hover {
+  background-color: rgba(239, 68, 68, 0.25);
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.4);
+  color: #ff9999;
+}
+
+.diff-move-badge.move-from {
+  background-color: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.diff-move-badge.move-from:hover {
+  background-color: rgba(16, 185, 129, 0.25);
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
+  color: #a7f3d0;
+}
+
+.diff-move-badge i {
+  width: 12px;
+  height: 12px;
+}
+
+/* Flash effect for line jumps */
+@keyframes line-flash {
+  0% {
+    background-color: rgba(59, 130, 246, 0.4) !important;
+    box-shadow: inset 0 0 10px rgba(59, 130, 246, 0.8);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.line-highlight-flash {
+  animation: line-flash 1.8s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.line-highlight-flash td {
+  animation: line-flash 1.8s cubic-bezier(0.25, 1, 0.5, 1);
+}
+

@@ -369,7 +369,7 @@ app.get('/api/file-diff', async (req, res) => {
           content: '+' + line
         }));
 
-        return res.json({
+        const payload = {
           oldPath: null,
           newPath: filePath,
           hunks: [{
@@ -380,7 +380,9 @@ app.get('/api/file-diff', async (req, res) => {
             header: `@@ -0,0 +1,${lines.length} @@`,
             lines: hunkLines
           }]
-        });
+        };
+        await annotateDiffWithMoves(payload, base, target);
+        return res.json(payload);
       } else {
         return res.status(404).json({ error: `File not found on disk: ${filePath}` });
       }
@@ -398,7 +400,7 @@ app.get('/api/file-diff', async (req, res) => {
           content: '-' + line
         }));
 
-        return res.json({
+        const payload = {
           oldPath: filePath,
           newPath: null,
           hunks: [{
@@ -409,7 +411,9 @@ app.get('/api/file-diff', async (req, res) => {
             header: `@@ -1,${lines.length} +0,0 @@`,
             lines: hunkLines
           }]
-        });
+        };
+        await annotateDiffWithMoves(payload, base, target);
+        return res.json(payload);
       } catch (err) {
         return res.status(500).json({ error: 'Failed to retrieve deleted file content', details: err.stderr || err.message });
       }
@@ -488,6 +492,7 @@ app.get('/api/file-diff', async (req, res) => {
       }
     }
 
+    await annotateDiffWithMoves(parsedDiff, base, target);
     res.json(parsedDiff);
   } catch (err) {
     res.status(500).json({ error: 'Failed to parse file diff', details: err.message });
@@ -556,8 +561,8 @@ function parseRawDiff(diffStr, filePath, oldFilePath) {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
 
-    // Check for binary file message
-    if (line.includes('Binary files') && line.includes('differ')) {
+    // Check for binary file message (only if it is a git header line, not code content)
+    if (line.includes('Binary files') && line.includes('differ') && !line.startsWith('+') && !line.startsWith('-') && !line.startsWith(' ')) {
       return { ...result, isBinary: true };
     }
 
@@ -927,9 +932,272 @@ app.get('/api/file-history', async (req, res) => {
   }
 });
 
+// ==========================================================================
+// Move Code Block Detection Algorithm
+// ==========================================================================
 
+const movesCache = new Map();
 
+function cleanGitPath(pathStr) {
+  if (!pathStr) return null;
+  let p = pathStr.trim();
+  if (p === '/dev/null') return null;
+  
+  if (p.startsWith('"') && p.endsWith('"')) {
+    p = p.slice(1, -1);
+    try {
+      p = JSON.parse('"' + p + '"');
+    } catch (e) {
+      // Fallback
+    }
+  }
+  
+  if (p.startsWith('a/')) {
+    return p.substring(2);
+  }
+  if (p.startsWith('b/')) {
+    return p.substring(2);
+  }
+  return p;
+}
 
+function isSignificantBlock(lines) {
+  if (!lines || lines.length < 3) return false;
+  
+  let alnumCount = 0;
+  for (const line of lines) {
+    const content = line.content;
+    const matches = content.match(/[a-zA-Z0-9]/g);
+    if (matches) {
+      alnumCount += matches.length;
+    }
+  }
+  
+  return alnumCount >= 15;
+}
+
+function normalizeContent(lines) {
+  return lines
+    .map(line => line.content.trim().replace(/\s+/g, ''))
+    .filter(line => line.length > 0)
+    .join('\n');
+}
+
+function parseU0Diff(diffOutput) {
+  const lines = diffOutput.split('\n');
+  const deletedBlocks = [];
+  const addedBlocks = [];
+
+  let currentFileOld = null;
+  let currentFileNew = null;
+  let oldLineNum = 0;
+  let newLineNum = 0;
+
+  let activeDeletedBlock = null;
+  let activeAddedBlock = null;
+
+  function flushActiveBlocks() {
+    if (activeDeletedBlock) {
+      if (isSignificantBlock(activeDeletedBlock.lines)) {
+        deletedBlocks.push(activeDeletedBlock);
+      }
+      activeDeletedBlock = null;
+    }
+    if (activeAddedBlock) {
+      if (isSignificantBlock(activeAddedBlock.lines)) {
+        addedBlocks.push(activeAddedBlock);
+      }
+      activeAddedBlock = null;
+    }
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    if (line.startsWith('diff --git ')) {
+      flushActiveBlocks();
+      currentFileOld = null;
+      currentFileNew = null;
+      continue;
+    }
+
+    if (line.startsWith('--- ')) {
+      currentFileOld = cleanGitPath(line.substring(4));
+      continue;
+    }
+    if (line.startsWith('+++ ')) {
+      currentFileNew = cleanGitPath(line.substring(4));
+      continue;
+    }
+
+    const hunkHeaderMatch = line.match(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/);
+    if (hunkHeaderMatch) {
+      flushActiveBlocks();
+      oldLineNum = parseInt(hunkHeaderMatch[1]);
+      newLineNum = parseInt(hunkHeaderMatch[3]);
+      continue;
+    }
+
+    if (line.startsWith('-')) {
+      if (activeAddedBlock) {
+        if (isSignificantBlock(activeAddedBlock.lines)) {
+          addedBlocks.push(activeAddedBlock);
+        }
+        activeAddedBlock = null;
+      }
+
+      if (!activeDeletedBlock) {
+        activeDeletedBlock = {
+          filePath: currentFileOld,
+          startLine: oldLineNum,
+          lines: []
+        };
+      }
+      activeDeletedBlock.lines.push({
+        lineNum: oldLineNum,
+        content: line.substring(1)
+      });
+      oldLineNum++;
+    } else if (line.startsWith('+')) {
+      if (activeDeletedBlock) {
+        if (isSignificantBlock(activeDeletedBlock.lines)) {
+          deletedBlocks.push(activeDeletedBlock);
+        }
+        activeDeletedBlock = null;
+      }
+
+      if (!activeAddedBlock) {
+        activeAddedBlock = {
+          filePath: currentFileNew,
+          startLine: newLineNum,
+          lines: []
+        };
+      }
+      activeAddedBlock.lines.push({
+        lineNum: newLineNum,
+        content: line.substring(1)
+      });
+      newLineNum++;
+    } else {
+      flushActiveBlocks();
+    }
+  }
+
+  flushActiveBlocks();
+
+  return { deletedBlocks, addedBlocks };
+}
+
+function findMoves(deletedBlocks, addedBlocks) {
+  for (const block of deletedBlocks) {
+    block.normalized = normalizeContent(block.lines);
+  }
+  for (const block of addedBlocks) {
+    block.normalized = normalizeContent(block.lines);
+  }
+
+  const moves = {
+    to: new Map(),
+    from: new Map()
+  };
+
+  const matchedAddedIndices = new Set();
+
+  for (const delBlock of deletedBlocks) {
+    if (!delBlock.normalized || !delBlock.filePath) continue;
+
+    for (let j = 0; j < addedBlocks.length; j++) {
+      if (matchedAddedIndices.has(j)) continue;
+
+      const addBlock = addedBlocks[j];
+      if (!addBlock.filePath) continue;
+
+      if (delBlock.normalized === addBlock.normalized) {
+        if (delBlock.filePath !== addBlock.filePath || delBlock.startLine !== addBlock.startLine) {
+          matchedAddedIndices.add(j);
+
+          const baseKey = `${delBlock.filePath}:${delBlock.startLine}`;
+          const targetKey = `${addBlock.filePath}:${addBlock.startLine}`;
+
+          moves.to.set(baseKey, { filePath: addBlock.filePath, line: addBlock.startLine });
+          moves.from.set(targetKey, { filePath: delBlock.filePath, line: delBlock.startLine });
+          break;
+        }
+      }
+    }
+  }
+
+  return moves;
+}
+
+async function getMovesForComparison(base, target, repoPath) {
+  const cacheKey = `${repoPath}:${base}:${target}`;
+  const now = Date.now();
+  const cached = movesCache.get(cacheKey);
+  
+  const isLive = target === '__live__';
+  if (cached && (!isLive || (now - cached.timestamp < 3000))) {
+    return cached.moves;
+  }
+  
+  const diffArgs = ['diff', '-U0', '--no-color'];
+  if (isLive) {
+    diffArgs.push(base);
+  } else {
+    diffArgs.push(base, target);
+  }
+  
+  let diffOutput = '';
+  try {
+    diffOutput = await runGit(diffArgs, repoPath);
+  } catch (err) {
+    if (err.stdout) {
+      diffOutput = err.stdout;
+    } else {
+      return { to: new Map(), from: new Map() };
+    }
+  }
+  
+  const { deletedBlocks, addedBlocks } = parseU0Diff(diffOutput);
+  const moves = findMoves(deletedBlocks, addedBlocks);
+  
+  movesCache.set(cacheKey, {
+    timestamp: now,
+    moves
+  });
+  
+  return moves;
+}
+
+async function annotateDiffWithMoves(parsedDiff, base, target) {
+  if (!parsedDiff || !parsedDiff.hunks || parsedDiff.hunks.length === 0) {
+    return parsedDiff;
+  }
+  try {
+    const moves = await getMovesForComparison(base, target, currentRepoPath);
+    const oldPath = parsedDiff.oldPath;
+    const newPath = parsedDiff.newPath;
+    
+    parsedDiff.hunks.forEach(hunk => {
+      hunk.lines.forEach(line => {
+        if (line.type === 'delete' && line.oldLine !== null && oldPath) {
+          const key = `${oldPath}:${line.oldLine}`;
+          if (moves.to.has(key)) {
+            line.movedTo = moves.to.get(key);
+          }
+        } else if (line.type === 'add' && line.newLine !== null && newPath) {
+          const key = `${newPath}:${line.newLine}`;
+          if (moves.from.has(key)) {
+            line.movedFrom = moves.from.get(key);
+          }
+        }
+      });
+    });
+  } catch (err) {
+    console.error('[Moves Detection] Failed to annotate moves:', err);
+  }
+  return parsedDiff;
+}
 app.listen(PORT, () => {
   console.log(`diff++ running on http://localhost:${PORT}`);
 });

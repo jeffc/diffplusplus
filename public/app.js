@@ -1034,6 +1034,7 @@ function renderDetailedDiff(diffData) {
   } else if (state.diffLayout === 'single') {
     renderSingleDiff(diffData, diffViewerPanel, hideHeaders ? true : state.fullContext);
   }
+  lucide.createIcons();
 }
 
 function renderUnifiedDiff(diffData, targetElement, hideHunkHeaders = false) {
@@ -1060,12 +1061,36 @@ function renderUnifiedDiff(diffData, targetElement, hideHunkHeaders = false) {
       const newLineVal = line.newLine !== null ? line.newLine : '';
       const marker = line.type === 'add' ? '+' : line.type === 'delete' ? '-' : ' ';
       
-      const dataLineAttr = newLineVal !== '' ? `data-line="${newLineVal}"` : '';
+      const dataLineOld = oldLineVal !== '' ? `data-line-old="${oldLineVal}"` : '';
+      const dataLineNew = newLineVal !== '' ? `data-line-new="${newLineVal}"` : '';
+      const dataLineAttr = `${dataLineOld} ${dataLineNew}`.trim();
+      
+      let moveBadgeHtml = '';
+      if (line.type === 'delete' && line.movedTo) {
+        const targetPath = line.movedTo.filePath;
+        const targetLine = line.movedTo.line;
+        const displayPath = targetPath === (diffData.newPath || diffData.oldPath) ? '' : `${getFilename(targetPath)}:`;
+        moveBadgeHtml = `
+          <span class="diff-move-badge move-to" onclick="navigateToMove('${escapeJsString(targetPath)}', ${targetLine}, true)" title="Moved to ${targetPath}:${targetLine}">
+            <i data-lucide="arrow-right"></i> Moved to ${displayPath}${targetLine}
+          </span>
+        `;
+      } else if (line.type === 'add' && line.movedFrom) {
+        const sourcePath = line.movedFrom.filePath;
+        const sourceLine = line.movedFrom.line;
+        const displayPath = sourcePath === (diffData.oldPath || diffData.newPath) ? '' : `${getFilename(sourcePath)}:`;
+        moveBadgeHtml = `
+          <span class="diff-move-badge move-from" onclick="navigateToMove('${escapeJsString(sourcePath)}', ${sourceLine}, false)" title="Moved from ${sourcePath}:${sourceLine}">
+            <i data-lucide="arrow-left"></i> Moved from ${displayPath}${sourceLine}
+          </span>
+        `;
+      }
+
       if (isUnchanged) {
         html += `
           <tr class="diff-row" ${dataLineAttr}>
             <td class="diff-gutter">${newLineVal}</td>
-            <td class="diff-code">${highlightCodeLine(line.content.substring(1), diffData.newPath || diffData.oldPath)}</td>
+            <td class="diff-code">${highlightCodeLine(line.content.substring(1), diffData.newPath || diffData.oldPath)}${moveBadgeHtml}</td>
           </tr>
         `;
       } else {
@@ -1074,7 +1099,7 @@ function renderUnifiedDiff(diffData, targetElement, hideHunkHeaders = false) {
             <td class="diff-gutter">${oldLineVal}</td>
             <td class="diff-gutter">${newLineVal}</td>
             <td class="diff-marker">${marker}</td>
-            <td class="diff-code">${highlightCodeLine(line.content.substring(1), diffData.newPath || diffData.oldPath)}</td>
+            <td class="diff-code">${highlightCodeLine(line.content.substring(1), diffData.newPath || diffData.oldPath)}${moveBadgeHtml}</td>
           </tr>
         `;
       }
@@ -1119,12 +1144,24 @@ function renderSplitDiff(diffData, targetElement, hideHunkHeaders = false) {
         const marker = row.left.type === 'delete' ? '-' : ' ';
         const content = row.left.content.substring(1);
         
+        let leftMoveBadgeHtml = '';
+        if (row.left.type === 'delete' && row.left.movedTo) {
+          const targetPath = row.left.movedTo.filePath;
+          const targetLine = row.left.movedTo.line;
+          const displayPath = targetPath === (diffData.newPath || diffData.oldPath) ? '' : `${getFilename(targetPath)}:`;
+          leftMoveBadgeHtml = `
+            <span class="diff-move-badge move-to" onclick="navigateToMove('${escapeJsString(targetPath)}', ${targetLine}, true)" title="Moved to ${targetPath}:${targetLine}">
+              <i data-lucide="arrow-right"></i> Moved to ${displayPath}${targetLine}
+            </span>
+          `;
+        }
+        
         html += `
-          <td class="split-cell ${leftType}">
+          <td class="split-cell ${leftType}" data-line-old="${oldLineVal}">
             <div class="split-cell-inner">
               <span class="diff-gutter">${oldLineVal}</span>
               <span class="diff-marker">${marker}</span>
-              <span class="diff-code">${highlightCodeLine(content, diffData.newPath || diffData.oldPath)}</span>
+              <span class="diff-code">${highlightCodeLine(content, diffData.newPath || diffData.oldPath)}${leftMoveBadgeHtml}</span>
             </div>
           </td>
         `;
@@ -1147,12 +1184,24 @@ function renderSplitDiff(diffData, targetElement, hideHunkHeaders = false) {
         const marker = row.right.type === 'add' ? '+' : ' ';
         const content = row.right.content.substring(1);
         
+        let rightMoveBadgeHtml = '';
+        if (row.right.type === 'add' && row.right.movedFrom) {
+          const sourcePath = row.right.movedFrom.filePath;
+          const sourceLine = row.right.movedFrom.line;
+          const displayPath = sourcePath === (diffData.oldPath || diffData.newPath) ? '' : `${getFilename(sourcePath)}:`;
+          rightMoveBadgeHtml = `
+            <span class="diff-move-badge move-from" onclick="navigateToMove('${escapeJsString(sourcePath)}', ${sourceLine}, false)" title="Moved from ${sourcePath}:${sourceLine}">
+              <i data-lucide="arrow-left"></i> Moved from ${displayPath}${sourceLine}
+            </span>
+          `;
+        }
+        
         html += `
-          <td class="split-cell ${rightType}">
+          <td class="split-cell ${rightType}" data-line-new="${newLineVal}">
             <div class="split-cell-inner">
               <span class="diff-gutter">${newLineVal}</span>
               <span class="diff-marker">${marker}</span>
-              <span class="diff-code">${highlightCodeLine(content, diffData.newPath || diffData.oldPath)}</span>
+              <span class="diff-code">${highlightCodeLine(content, diffData.newPath || diffData.oldPath)}${rightMoveBadgeHtml}</span>
             </div>
           </td>
         `;
@@ -1204,12 +1253,36 @@ function renderSingleDiff(diffData, targetElement, hideHunkHeaders = false) {
 
       const typeClass = line.type === 'add' ? 'row-add' : line.type === 'delete' ? 'row-delete' : line.type === 'info' ? 'row-info' : '';
       const lineNum = version === 'base' ? (line.oldLine !== null ? line.oldLine : '') : (line.newLine !== null ? line.newLine : '');
-      const dataLineAttr = lineNum !== '' ? `data-line="${lineNum}"` : '';
+      
+      const dataLineOld = version === 'base' && line.oldLine !== null ? `data-line-old="${line.oldLine}"` : '';
+      const dataLineNew = version === 'target' && line.newLine !== null ? `data-line-new="${line.newLine}"` : '';
+      const dataLineAttr = `${dataLineOld} ${dataLineNew}`.trim();
+
+      let moveBadgeHtml = '';
+      if (version === 'base' && line.type === 'delete' && line.movedTo) {
+        const targetPath = line.movedTo.filePath;
+        const targetLine = line.movedTo.line;
+        const displayPath = targetPath === (diffData.newPath || diffData.oldPath) ? '' : `${getFilename(targetPath)}:`;
+        moveBadgeHtml = `
+          <span class="diff-move-badge move-to" onclick="navigateToMove('${escapeJsString(targetPath)}', ${targetLine}, true)" title="Moved to ${targetPath}:${targetLine}">
+            <i data-lucide="arrow-right"></i> Moved to ${displayPath}${targetLine}
+          </span>
+        `;
+      } else if (version === 'target' && line.type === 'add' && line.movedFrom) {
+        const sourcePath = line.movedFrom.filePath;
+        const sourceLine = line.movedFrom.line;
+        const displayPath = sourcePath === (diffData.oldPath || diffData.newPath) ? '' : `${getFilename(sourcePath)}:`;
+        moveBadgeHtml = `
+          <span class="diff-move-badge move-from" onclick="navigateToMove('${escapeJsString(sourcePath)}', ${sourceLine}, false)" title="Moved from ${sourcePath}:${sourceLine}">
+            <i data-lucide="arrow-left"></i> Moved from ${displayPath}${sourceLine}
+          </span>
+        `;
+      }
 
       html += `
         <tr class="diff-row ${typeClass}" ${dataLineAttr}>
           <td class="diff-gutter">${lineNum}</td>
-          <td class="diff-code">${highlightCodeLine(line.content.substring(1), diffData.newPath || diffData.oldPath)}</td>
+          <td class="diff-code">${highlightCodeLine(line.content.substring(1), diffData.newPath || diffData.oldPath)}${moveBadgeHtml}</td>
         </tr>
       `;
     });
@@ -2986,4 +3059,69 @@ function setControlVisibility(element, visible, collapse = false) {
     }
   }
 }
+
+// ==========================================================================
+// Moved Code Blocks Navigation Helpers
+// ==========================================================================
+
+function getFilename(p) {
+  if (!p) return '';
+  const parts = p.split('/');
+  return parts[parts.length - 1];
+}
+
+function escapeJsString(str) {
+  if (!str) return '';
+  return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+async function navigateToMove(filePath, lineNum, isTargetVersion) {
+  // If format is single, ensure singleVersion matches the destination version
+  if (state.diffLayout === 'single') {
+    state.singleVersion = isTargetVersion ? 'target' : 'base';
+    const singleBaseBtn = document.getElementById('singleBaseBtn');
+    const singleTargetBtn = document.getElementById('singleTargetBtn');
+    const singleFormatBtnText = document.getElementById('singleFormatBtnText');
+    if (singleBaseBtn && singleTargetBtn) {
+      if (state.singleVersion === 'base') {
+        singleBaseBtn.classList.add('active');
+        singleTargetBtn.classList.remove('active');
+        if (singleFormatBtnText) singleFormatBtnText.textContent = 'Single (Base)';
+      } else {
+        singleTargetBtn.classList.add('active');
+        singleBaseBtn.classList.remove('active');
+        if (singleFormatBtnText) singleFormatBtnText.textContent = 'Single (Target)';
+      }
+    }
+  }
+
+  // Find file in state.files
+  let file = state.files.find(f => f.path === filePath);
+  if (!file) {
+    file = { path: filePath, status: 'M', oldPath: null };
+  }
+
+  // Select the file to load and display it
+  selectFile(file);
+
+  // Await the detailed content loading process to finish
+  await loadDetailedContent();
+
+  // Scroll to the line and trigger visual highlight flash
+  setTimeout(() => {
+    const selector = isTargetVersion ? `[data-line-new="${lineNum}"]` : `[data-line-old="${lineNum}"]`;
+    const element = document.querySelector(selector);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const flashTarget = element.closest('tr') || element;
+      flashTarget.classList.add('line-highlight-flash');
+      setTimeout(() => {
+        flashTarget.classList.remove('line-highlight-flash');
+      }, 1800);
+    } else {
+      console.warn(`[NavigateToMove] Could not find line selector: ${selector}`);
+    }
+  }, 200);
+}
+
 
