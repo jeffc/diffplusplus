@@ -1109,6 +1109,16 @@ body {
   pointer-events: none;
 }
 
+.single-dropdown-menu::before {
+  content: '';
+  position: absolute;
+  top: -12px;
+  left: 0;
+  right: 0;
+  height: 12px;
+  background: transparent;
+}
+
 .single-dropdown-container:hover .single-dropdown-menu {
   opacity: 1;
   visibility: visible;
