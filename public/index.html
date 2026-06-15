@@ -27,7 +27,13 @@
         <i data-lucide="git-fork"></i>
         <span>diff++</span>
       </div>
-      <div class="repo-input-container">
+      <div class="repo-input-container" id="repoInputContainer">
+        <!-- Chip representation (hidden by default) -->
+        <div id="repoPathChip" class="repo-chip" style="display: none;" title="Click to edit repository path">
+          <i data-lucide="folder-git-2" class="chip-icon"></i>
+          <span class="chip-text"></span>
+          <i data-lucide="pencil" class="chip-edit-icon"></i>
+        </div>
         <input type="text" id="repoPathInput" placeholder="Enter path to Git repository (e.g. /home/user/project)" />
         <button id="loadRepoBtn" class="btn btn-primary">
           <i data-lucide="arrow-right"></i>
@@ -124,55 +130,65 @@
         </div>
 
         <div class="detail-actions">
-          <!-- Full File Toggle -->
-          <div class="toggle-group" id="fullContextToggleGroup">
-            <button class="toggle-btn active" id="hunksContextBtn" title="Show only changed sections">
-              Changes Only
-            </button>
-            <button class="toggle-btn" id="fullContextBtn" title="Show entire file with diff in context">
-              Whole File
-            </button>
+          <!-- Mode Toggle (Diff vs Blame vs Render vs History) -->
+          <div class="control-group" id="modeToggleGroup">
+            <span class="control-label">Mode</span>
+            <div class="toggle-group">
+              <button class="toggle-btn active" id="modeDiffBtn">
+                <i data-lucide="code"></i> Diff
+              </button>
+              <button class="toggle-btn" id="modeBlameBtn">
+                <i data-lucide="history"></i> Blame
+              </button>
+              <button class="toggle-btn" id="modeRenderBtn">
+                <i data-lucide="eye"></i> Render
+              </button>
+              <button class="toggle-btn" id="modeHistoryBtn" title="View Commit History for this file">
+                <i data-lucide="calendar"></i> History
+              </button>
+            </div>
           </div>
 
           <!-- Diff Format Toggle (Unified vs Split vs Single) -->
-          <div class="toggle-group" id="diffFormatToggleGroup">
-            <button class="toggle-btn active" id="unifiedFormatBtn" title="Unified Diff View">
-              <i data-lucide="stretch-horizontal"></i> Unified
-            </button>
-            <button class="toggle-btn" id="splitFormatBtn" title="Split/Side-by-Side Diff View">
-              <i data-lucide="columns-2"></i> Split
-            </button>
-            <button class="toggle-btn" id="singleFormatBtn" title="Single File View (Base or Target)">
-              <i data-lucide="file-text"></i> Single
-            </button>
+          <div class="control-group" id="diffFormatToggleGroup">
+            <span class="control-label">Layout</span>
+            <div class="toggle-group">
+              <button class="toggle-btn active" id="unifiedFormatBtn" title="Unified Diff View">
+                <i data-lucide="stretch-horizontal"></i> Unified
+              </button>
+              <button class="toggle-btn" id="splitFormatBtn" title="Split/Side-by-Side Diff View">
+                <i data-lucide="columns-2"></i> Split
+              </button>
+              <button class="toggle-btn" id="singleFormatBtn" title="Single File View (Base or Target)">
+                <i data-lucide="file-text"></i> Single
+              </button>
+            </div>
+          </div>
+
+          <!-- Full File Toggle -->
+          <div class="control-group" id="fullContextToggleGroup">
+            <span class="control-label">Context</span>
+            <div class="toggle-group">
+              <button class="toggle-btn active" id="hunksContextBtn" title="Show only changed sections">
+                Changes Only
+              </button>
+              <button class="toggle-btn" id="fullContextBtn" title="Show entire file with diff in context">
+                Whole File
+              </button>
+            </div>
           </div>
 
           <!-- Single Version Selector -->
-          <div class="toggle-group" id="singleVersionToggleGroup" style="display: none; margin-left: 8px;">
-            <button class="toggle-btn" id="singleBaseBtn" title="Show Base (Old) Version">
-              Base
-            </button>
-            <button class="toggle-btn" id="singleTargetBtn" title="Show Target (New) Version">
-              Target
-            </button>
-          </div>
-
-
-
-          <!-- Mode Toggle (Diff vs Blame vs Render vs History) -->
-          <div class="toggle-group" id="modeToggleGroup">
-            <button class="toggle-btn active" id="modeDiffBtn">
-              <i data-lucide="code"></i> Diff
-            </button>
-            <button class="toggle-btn" id="modeBlameBtn">
-              <i data-lucide="history"></i> Blame
-            </button>
-            <button class="toggle-btn" id="modeRenderBtn">
-              <i data-lucide="eye"></i> Render
-            </button>
-            <button class="toggle-btn" id="modeHistoryBtn" title="View Commit History for this file">
-              <i data-lucide="calendar"></i> History
-            </button>
+          <div class="control-group" id="singleVersionToggleGroup" style="display: none; margin-left: 8px;">
+            <span class="control-label">Version</span>
+            <div class="toggle-group">
+              <button class="toggle-btn" id="singleBaseBtn" title="Show Base (Old) Version">
+                Base
+              </button>
+              <button class="toggle-btn" id="singleTargetBtn" title="Show Target (New) Version">
+                Target
+              </button>
+            </div>
           </div>
         </div>
       </div>

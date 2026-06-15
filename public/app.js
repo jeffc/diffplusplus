@@ -39,6 +39,8 @@ let blockPushState = false;
 const repoPathInput = document.getElementById('repoPathInput');
 const loadRepoBtn = document.getElementById('loadRepoBtn');
 const repoStatusBadge = document.getElementById('repoStatusBadge');
+const repoInputContainer = document.getElementById('repoInputContainer');
+const repoPathChip = document.getElementById('repoPathChip');
 
 const baseRefSelect = document.getElementById('baseRefSelect');
 const baseRefCustomInput = document.getElementById('baseRefCustomInput');
@@ -99,6 +101,29 @@ function initApp() {
   loadRepoBtn.addEventListener('click', handleLoadRepo);
   repoPathInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') handleLoadRepo();
+  });
+
+  // Chip click / focus / escape listeners
+  if (repoPathChip) {
+    repoPathChip.addEventListener('click', enterEditMode);
+  }
+  repoPathInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      repoPathInput.value = state.repoPath || '';
+      if (state.isRepo) {
+        enterChipMode();
+      }
+    }
+  });
+  repoPathInput.addEventListener('blur', () => {
+    setTimeout(() => {
+      if (document.activeElement === repoPathInput || document.activeElement === loadRepoBtn) {
+        return;
+      }
+      if (state.isRepo && repoPathInput.value.trim() === state.repoPath) {
+        enterChipMode();
+      }
+    }, 150);
   });
 
 
@@ -251,6 +276,36 @@ async function fetchConfig() {
   }
 }
 
+function enterChipMode() {
+  if (!state.isRepo || !state.repoPath) {
+    enterEditMode();
+    return;
+  }
+  if (repoInputContainer && repoPathChip && repoPathInput && loadRepoBtn && repoStatusBadge) {
+    const parts = state.repoPath.split('/').filter(Boolean);
+    const dirName = parts.pop() || state.repoPath;
+    repoPathChip.querySelector('.chip-text').innerText = dirName;
+    
+    repoInputContainer.classList.add('chip-mode');
+    repoPathChip.style.display = 'flex';
+    repoPathInput.style.display = 'none';
+    loadRepoBtn.style.display = 'none';
+    repoStatusBadge.style.display = 'none';
+  }
+}
+
+function enterEditMode() {
+  if (repoInputContainer && repoPathChip && repoPathInput && loadRepoBtn && repoStatusBadge) {
+    repoInputContainer.classList.remove('chip-mode');
+    repoPathChip.style.display = 'none';
+    repoPathInput.style.display = 'block';
+    loadRepoBtn.style.display = 'inline-flex';
+    repoStatusBadge.style.display = 'inline-flex';
+    repoPathInput.focus();
+    repoPathInput.select();
+  }
+}
+
 async function handleLoadRepo() {
   const pathVal = repoPathInput.value.trim();
   if (!pathVal) return;
@@ -278,6 +333,7 @@ async function loadRepoFromPath(pathVal, initialLoad = false) {
     state.currentBranch = data.currentBranch;
     
     updateRepoStatusUI();
+    enterChipMode();
     state.confirmedBinaryFiles.clear();
     if (!initialLoad) {
       state.baseRef = 'HEAD';
@@ -308,6 +364,7 @@ async function loadRepoFromPath(pathVal, initialLoad = false) {
   } catch (err) {
     state.isRepo = false;
     updateRepoStatusUI();
+    enterEditMode();
     showToast('Error', err.message, 'info');
     clearRepoData();
     syncStateToUrl();
@@ -420,6 +477,7 @@ function clearRepoData() {
   state.loadedFilePath = '';
   hideDetailView();
   stopFileWatch();
+  enterEditMode();
 }
 
 async function fetchDiffList(initialLoad = false, shouldReloadDetails = true) {
@@ -798,6 +856,10 @@ function hideDetailView() {
 
 async function loadDetailedContent() {
   if (!state.selectedFile) return;
+
+  if (modeToggleGroup) {
+    modeToggleGroup.style.display = 'flex';
+  }
 
   if (state.viewMode === 'diff') {
     diffViewerPanel.style.display = 'block';
