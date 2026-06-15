@@ -67,7 +67,7 @@ const detailFileRename = document.getElementById('detailFileRename');
 const unifiedFormatBtn = document.getElementById('unifiedFormatBtn');
 const splitFormatBtn = document.getElementById('splitFormatBtn');
 const singleFormatBtn = document.getElementById('singleFormatBtn');
-const singleVersionToggleGroup = document.getElementById('singleVersionToggleGroup');
+const singleFormatBtnText = document.getElementById('singleFormatBtnText');
 const singleBaseBtn = document.getElementById('singleBaseBtn');
 const singleTargetBtn = document.getElementById('singleTargetBtn');
 const diffFormatToggleGroup = document.getElementById('diffFormatToggleGroup');
@@ -217,8 +217,16 @@ function initApp() {
   unifiedFormatBtn.addEventListener('click', () => setDiffLayout('unified'));
   splitFormatBtn.addEventListener('click', () => setDiffLayout('split'));
   singleFormatBtn.addEventListener('click', () => setDiffLayout('single'));
-  singleBaseBtn.addEventListener('click', () => setSingleVersion('base'));
-  singleTargetBtn.addEventListener('click', () => setSingleVersion('target'));
+  singleBaseBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setSingleVersion('base');
+    setDiffLayout('single');
+  });
+  singleTargetBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setSingleVersion('target');
+    setDiffLayout('single');
+  });
   hunksContextBtn.addEventListener('click', () => setFullContext(false));
   fullContextBtn.addEventListener('click', () => setFullContext(true));
   modeDiffBtn.addEventListener('click', () => setViewMode('diff'));
@@ -425,14 +433,14 @@ async function loadRepoData(initialLoad = false) {
           singleFormatBtn.classList.toggle('active', state.diffLayout === 'single');
         }
       }
-      if (singleVersionToggleGroup) {
-        singleVersionToggleGroup.style.display = (state.diffLayout === 'single' && state.viewMode === 'diff') ? 'flex' : 'none';
-      }
       if (singleBaseBtn) {
         singleBaseBtn.classList.toggle('active', state.singleVersion === 'base');
       }
       if (singleTargetBtn) {
         singleTargetBtn.classList.toggle('active', state.singleVersion === 'target');
+      }
+      if (singleFormatBtnText) {
+        singleFormatBtnText.innerText = `Single (${state.singleVersion === 'base' ? 'Base' : 'Target'})`;
       }
       if (urlMode) {
         modeDiffBtn.classList.toggle('active', state.viewMode === 'diff');
@@ -868,7 +876,6 @@ async function loadDetailedContent() {
     const isUnchanged = state.selectedFile && state.selectedFile.status === 'unchanged';
     setControlVisibility(diffFormatToggleGroup, true);
     setControlVisibility(fullContextToggleGroup, !isUnchanged);
-    setControlVisibility(singleVersionToggleGroup, state.diffLayout === 'single' && !isUnchanged);
     
     const isSameFile = state.selectedFile && (state.selectedFile.path === state.loadedFilePath);
     if (!isSameFile) {
@@ -910,7 +917,6 @@ async function loadDetailedContent() {
     renderViewerPanel.style.display = 'none';
     setControlVisibility(diffFormatToggleGroup, false);
     setControlVisibility(fullContextToggleGroup, false);
-    setControlVisibility(singleVersionToggleGroup, false);
     
     const isSameFile = state.selectedFile && (state.selectedFile.path === state.loadedFilePath);
     const hasBlameTable = blameViewerPanel.querySelector('.blame-table') !== null;
@@ -941,7 +947,6 @@ async function loadDetailedContent() {
     renderViewerPanel.style.display = 'block';
     setControlVisibility(diffFormatToggleGroup, false);
     setControlVisibility(fullContextToggleGroup, false);
-    setControlVisibility(singleVersionToggleGroup, false);
     
     renderDetailedContent();
   }
@@ -1563,8 +1568,6 @@ function setDiffLayout(layout) {
   if (singleFormatBtn) {
     singleFormatBtn.classList.toggle('active', layout === 'single');
   }
-  const isUnchanged = state.selectedFile && state.selectedFile.status === 'unchanged';
-  setControlVisibility(singleVersionToggleGroup, layout === 'single' && state.viewMode === 'diff' && !isUnchanged);
   if (state.selectedFile && state.viewMode === 'diff') {
     loadDetailedContent();
   } else if (state.viewAllChanges) {
@@ -1580,6 +1583,9 @@ function setSingleVersion(version) {
   }
   if (singleTargetBtn) {
     singleTargetBtn.classList.toggle('active', version === 'target');
+  }
+  if (singleFormatBtnText) {
+    singleFormatBtnText.innerText = `Single (${version === 'base' ? 'Base' : 'Target'})`;
   }
   if (state.selectedFile && state.viewMode === 'diff') {
     loadDetailedContent();
@@ -1599,7 +1605,6 @@ function setViewMode(mode) {
   const isUnchanged = state.selectedFile && state.selectedFile.status === 'unchanged';
   setControlVisibility(diffFormatToggleGroup, mode === 'diff');
   setControlVisibility(fullContextToggleGroup, mode === 'diff' && !isUnchanged);
-  setControlVisibility(singleVersionToggleGroup, mode === 'diff' && state.diffLayout === 'single' && !isUnchanged);
   
   if (state.selectedFile) {
     if (mode === 'history') {
@@ -2444,7 +2449,6 @@ async function loadFileHistory() {
   historyViewerPanel.style.display = 'block';
   setControlVisibility(diffFormatToggleGroup, false);
   setControlVisibility(fullContextToggleGroup, false);
-  setControlVisibility(singleVersionToggleGroup, false);
 
   historyViewerPanel.innerHTML = '<div class="loader-container"><div class="spinner"></div><div>Loading file history...</div></div>';
 
@@ -2565,6 +2569,9 @@ window.addEventListener('popstate', async () => {
       if (singleTargetBtn) {
         singleTargetBtn.classList.toggle('active', state.singleVersion === 'target');
       }
+      if (singleFormatBtnText) {
+        singleFormatBtnText.innerText = `Single (${state.singleVersion === 'base' ? 'Base' : 'Target'})`;
+      }
       
       modeDiffBtn.classList.toggle('active', state.viewMode === 'diff');
       modeBlameBtn.classList.toggle('active', state.viewMode === 'blame');
@@ -2635,7 +2642,6 @@ async function loadAllChanges() {
 
   setControlVisibility(diffFormatToggleGroup, true);
   setControlVisibility(fullContextToggleGroup, false, true);
-  setControlVisibility(singleVersionToggleGroup, state.diffLayout === 'single', true);
   setControlVisibility(modeToggleGroup, false, true);
 
   // Check if the file blocks currently in the DOM match the target changedFiles list

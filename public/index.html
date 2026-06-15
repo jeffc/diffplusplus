@@ -159,9 +159,15 @@
               <button class="toggle-btn" id="splitFormatBtn" title="Split/Side-by-Side Diff View">
                 <i data-lucide="columns-2"></i> Split
               </button>
-              <button class="toggle-btn" id="singleFormatBtn" title="Single File View (Base or Target)">
-                <i data-lucide="file-text"></i> Single
-              </button>
+              <div class="single-dropdown-container" id="singleDropdownContainer">
+                <button class="toggle-btn" id="singleFormatBtn" title="Single File View (Base or Target)">
+                  <i data-lucide="file-text"></i> <span id="singleFormatBtnText">Single</span>
+                </button>
+                <div class="single-dropdown-menu">
+                  <button class="single-dropdown-item" id="singleBaseBtn" title="Show Base (Old) Version">Base (Old)</button>
+                  <button class="single-dropdown-item" id="singleTargetBtn" title="Show Target (New) Version">Target (New)</button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -174,19 +180,6 @@
               </button>
               <button class="toggle-btn" id="fullContextBtn" title="Show entire file with diff in context">
                 Whole File
-              </button>
-            </div>
-          </div>
-
-          <!-- Single Version Selector -->
-          <div class="control-group" id="singleVersionToggleGroup" style="display: none; margin-left: 8px;">
-            <span class="control-label">Version</span>
-            <div class="toggle-group">
-              <button class="toggle-btn" id="singleBaseBtn" title="Show Base (Old) Version">
-                Base
-              </button>
-              <button class="toggle-btn" id="singleTargetBtn" title="Show Target (New) Version">
-                Target
               </button>
             </div>
           </div>
